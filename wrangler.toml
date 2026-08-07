@@ -1,0 +1,32 @@
+name = "matchvaga"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# Garante que o Worker processe TODAS as requisições (headers de segurança,
+# rate limit etc.) antes do asset server servir arquivos estáticos.
+run_worker_first = true
+
+[[kv_namespaces]]
+binding = "RESULTS"
+id = "SUBSTITUA_PELO_ID_DO_KV"
+preview_id = "SUBSTITUA_PELO_ID_DO_KV_PREVIEW"
+
+[vars]
+OPENAI_MODEL = "deepseek-v4-flash"
+PRICE_BRL = "9,90"
+PIX_KEY = "CONFIGURE_SUA_CHAVE_PIX"
+# Anti-abuso: máx. análises grátis por IP/hora e teto global diário.
+RATE_LIMIT_PER_HOUR = "3"
+DAILY_PREVIEW_BUDGET = "100"
+# Alerta de orçamento: defina ALERT_WEBHOOK_URL (ex. https://ntfy.sh/topico)
+# via `wrangler secret put ALERT_WEBHOOK_URL` (ou .dev.vars em dev).
+# Turnstile (anti-bot). Sitekey criada no painel Cloudflare (Turnstile > Add site).
+# Vazio = widget não renderizado e verificação desativada.
+TURNSTILE_SITEKEY = "0x4AAAAAAEI7RpCF2S66jT6V"
+
+# Cron: alerta quando o orçamento diário está perto de esgotar.
+[triggers]
+crons = ["0 */6 * * *"]

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MatchVaga — Currículo alinhado à vaga</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="eyebrow">MATCHVAGA</div>
+      <h1>Veja o que está faltando no seu currículo para esta vaga.</h1>
+      <p class="lead">
+        Compare seu currículo com uma vaga real. Receba um diagnóstico objetivo sem inventar experiências.
+      </p>
+
+      <div class="grid">
+        <label>
+          <span>Seu currículo</span>
+          <textarea id="cv" placeholder="Cole aqui o texto do seu currículo..."></textarea>
+        </label>
+
+        <label>
+          <span>Descrição da vaga</span>
+          <textarea id="job" placeholder="Cole aqui a vaga completa..."></textarea>
+        </label>
+      </div>
+
+      <button id="analyze">Ver diagnóstico grátis</button>
+      <div id="turnstile" class="turnstile"></div>
+      <p id="status" class="status"></p>
+      <p class="hint">A análise é feita por IA e pode levar de 10 a 40 segundos.</p>
+    </section>
+
+    <section id="example" class="panel example">
+      <div class="eyebrow">EXEMPLO REAL</div>
+      <h2>O que você recebe</h2>
+      <p class="lead">Análise real (currículo fictício) de uma dev full stack para uma vaga de fintech.</p>
+      <div class="score-row">
+        <div>
+          <div class="score"><span id="exScore">0</span>%</div>
+          <div class="muted">aderência estimada</div>
+        </div>
+        <div class="pill"><span id="exGaps">0</span> gaps encontrados</div>
+      </div>
+      <div class="grid">
+        <div class="card"><h3>O que faltava no currículo</h3><ul id="exMissing"></ul></div>
+        <div class="card"><h3>Como corrigir</h3><ul id="exSuggestions"></ul></div>
+      </div>
+      <div class="card">
+        <h3>Currículo otimizado (trecho)</h3>
+        <pre id="exOptimized"></pre>
+      </div>
+      <div class="card">
+        <h3>Perguntas prováveis na entrevista</h3>
+        <ul id="exQuestions"></ul>
+      </div>
+      <div class="example-cta">
+        <button id="exCta">Quero essa análise para o meu currículo</button>
+      </div>
+    </section>
+
+    <section id="result" class="panel hidden">
+      <div class="score-row">
+        <div>
+          <div class="score"><span id="score">0</span>%</div>
+          <div class="muted">aderência estimada</div>
+        </div>
+        <div class="pill"><span id="gapCount">0</span> gaps encontrados</div>
+      </div>
+
+      <div class="card">
+        <h2>Pontos encontrados</h2>
+        <ul id="matched"></ul>
+      </div>
+
+      <div class="paywall" id="paywall">
+        <h2>Seu diagnóstico completo</h2>
+        <p class="pain">Os <span id="gapCount">0</span> gaps acima podem estar te custando entrevistas. Veja como corrigir cada um:</p>
+        <ul class="benefits">
+          <li>Gaps detalhados e o que exatamente falta para esta vaga</li>
+          <li>Sugestões práticas e acionáveis, sem inventar experiência</li>
+          <li>Currículo reescrito e otimizado para a vaga</li>
+          <li>Mensagem pronta para enviar ao recrutador</li>
+          <li>Perguntas prováveis da entrevista, com respostas na ponta da língua</li>
+        </ul>
+        <div class="price">R$ <span id="price">9,90</span></div>
+        <p class="anchor muted small">Uma reescrita profissional de currículo custa R$ 200–500.</p>
+        <button id="pay" class="pay-btn">Pagar e desbloquear agora</button>
+        <p class="muted small">Cartão ou PIX. Pagamento seguro pelo Stripe — acesso liberado automaticamente após a confirmação.</p>
+        <p class="guarantee">Garantia de 7 dias: se não achar útil, devolvemos 100%.</p>
+        <p id="unlockError" class="error"></p>
+        <details class="faq">
+          <summary>É seguro? Meus dados ficam salvos?</summary>
+          Seu currículo é usado exclusivamente para gerar a análise, fica armazenado por no máximo 2 horas e não é compartilhado com terceiros (LGPD).
+        </details>
+        <details class="faq">
+          <summary>Quanto tempo demora?</summary>
+          A análise leva de 10 a 40 segundos. O desbloqueio é automático assim que o pagamento confirma.
+        </details>
+        <details class="faq">
+          <summary>É preciso? A IA inventa informações?</summary>
+          O sistema é treinado para nunca inventar experiência, tecnologia ou resultado. Ele reorganiza e melhora a redação apenas com fatos do seu currículo.
+        </details>
+      </div>
+
+      <section id="premium" class="hidden">
+        <div class="card"><h2>Gaps</h2><ul id="missing"></ul></div>
+        <div class="card"><h2>Como melhorar</h2><ul id="suggestions"></ul></div>
+        <div class="card"><h2>Currículo otimizado</h2><pre id="optimized"></pre></div>
+        <div class="card"><h2>Mensagem para recrutador</h2><pre id="message"></pre></div>
+        <div class="card"><h2>Perguntas prováveis</h2><ul id="questions"></ul></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p><strong>Aviso de privacidade (LGPD):</strong> seu currículo é usado exclusivamente para gerar a análise, fica armazenado por no máximo 2 horas e não é compartilhado com terceiros. Para solicitar a exclusão dos seus dados, entre em contato pelo formulário do site.</p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

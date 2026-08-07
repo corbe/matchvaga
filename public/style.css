@@ -1,0 +1,39 @@
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,Arial,sans-serif;background:#f5f7fb;color:#111827}
+.wrap{max-width:1000px;margin:auto;padding:32px 16px 64px}
+.hero,.panel{background:#fff;border-radius:22px;padding:30px;box-shadow:0 12px 40px rgba(0,0,0,.06)}
+.panel{margin-top:22px}
+.eyebrow{font-size:12px;font-weight:900;letter-spacing:.14em}
+h1{font-size:42px;line-height:1.05;margin:12px 0}
+.lead,.muted{color:#667085}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0}
+label span{display:block;font-weight:800;margin-bottom:8px}
+textarea{width:100%;min-height:280px;border:1px solid #d0d5dd;border-radius:14px;padding:14px;font:inherit;resize:vertical}
+button{border:0;border-radius:12px;background:#111827;color:#fff;padding:14px 18px;font-weight:800;font-size:15px;cursor:pointer}
+button:disabled{opacity:.55}
+.status,.error{color:#b42318}
+.hint{color:#98a2b3;font-size:13px;margin-top:10px}
+.small{font-size:13px}
+.hidden{display:none}
+.turnstile{margin-top:14px}
+.score-row{display:flex;justify-content:space-between;gap:16px;align-items:center}
+.score{font-size:60px;font-weight:950}
+.pill{background:#f2f4f7;border-radius:999px;padding:10px 14px;font-weight:800}
+.card,.paywall{margin-top:18px;padding:20px;border-radius:16px;background:#f8fafc}
+.paywall{border:2px solid #111827;background:white}
+.price{font-size:34px;font-weight:950;margin:6px 0}
+.pain{font-weight:800}
+.benefits{padding-left:20px;line-height:1.7}
+.anchor{display:block;margin:-6px 0 4px}
+.guarantee{margin-top:10px;font-weight:800;color:#0e9f6e}
+.faq{margin-top:10px;border-top:1px solid #e5e7eb;padding-top:10px;color:#475467}
+.faq summary{cursor:pointer;font-weight:800;color:#111827}
+.faq p{margin:6px 0 0;font-weight:400}
+.pay-btn{width:100%;margin-top:14px;padding:16px;font-size:16px;background:#0e9f6e}
+.pay-btn:hover{background:#0b8a5f}
+.example{border:2px solid #d0d5dd}
+.example .score-row{margin-top:8px}
+.example-cta{text-align:center;margin-top:22px}
+pre{white-space:pre-wrap;font-family:inherit;line-height:1.5}
+.footer{max-width:1000px;margin:0 auto;padding:0 16px 40px;color:#667085;font-size:13px;line-height:1.5}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.score-row{align-items:flex-start;flex-direction:column}h1{font-size:34px}}
