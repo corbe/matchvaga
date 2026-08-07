@@ -11,8 +11,8 @@ run_worker_first = true
 
 [[kv_namespaces]]
 binding = "RESULTS"
-id = "SUBSTITUA_PELO_ID_DO_KV"
-preview_id = "SUBSTITUA_PELO_ID_DO_KV_PREVIEW"
+id = "bb1377b1a2c144b4820fc738f8bf85b8"
+preview_id = "bb1377b1a2c144b4820fc738f8bf85b8"
 
 [vars]
 OPENAI_MODEL = "deepseek-v4-flash"
