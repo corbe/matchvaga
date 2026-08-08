@@ -966,11 +966,28 @@ export default {
     }
 
     // Dashboard do funil — rota interna protegida (não conta como landing_view).
+    // Serve o HTML inline (sem redirect): o asset server canonicaliza
+    // /dashboard.html → /dashboard, o que criaria loop com esta rota.
     if (request.method === "GET" && (url.pathname === "/dashboard" || url.pathname === "/stats")) {
       if (env.STATS_KEY && url.searchParams.get("key") !== env.STATS_KEY) {
         return json({ error: "Acesso negado." }, 403);
       }
-      return Response.redirect(new URL("/dashboard.html" + url.search, url).toString(), 302);
+      let asset = await env.ASSETS.fetch(new Request(new URL("/dashboard.html", url), request), { redirect: "manual" });
+      let hops = 0;
+      while ((asset.status === 301 || asset.status === 302 || asset.status === 307 || asset.status === 308) && hops < 4) {
+        const loc = asset.headers.get("location");
+        if (!loc) break;
+        asset = await env.ASSETS.fetch(new Request(new URL(loc, url), request), { redirect: "manual" });
+        hops++;
+      }
+      const headers = new Headers({
+        "content-type": asset.headers.get("content-type") || "text/html;charset=utf-8",
+        "cache-control": "no-store"
+      });
+      for (const [name, value] of Object.entries(securityHeaders)) {
+        if (!headers.has(name)) headers.set(name, value);
+      }
+      return new Response(asset.body, { status: asset.status, headers });
     }
 
     if (request.method === "GET" && url.pathname === "/api/config") {
