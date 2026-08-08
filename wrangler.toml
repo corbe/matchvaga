@@ -24,10 +24,10 @@ DAILY_PREVIEW_BUDGET = "100"
 # Alerta de orçamento: defina ALERT_WEBHOOK_URL (ex. https://ntfy.sh/topico)
 # via `wrangler secret put ALERT_WEBHOOK_URL` (ou .dev.vars em dev).
 # Turnstile (anti-bot). Sitekey criada no painel Cloudflare (Turnstile > Add site).
-# Domínios permitidos: localhost + matchvaga.matchvaga.workers.dev (o sitekey
-# antigo só tinha matchvaga.workers.dev — sem subdomínio — e bloqueava todo mundo).
+# Domínios permitidos (EXATO — subdomínio não herda): localhost,
+# matchvaga.matchvaga.workers.dev e matchvaga.kubezen.com.
 # Vazio = widget não renderizado e verificação desativada.
-TURNSTILE_SITEKEY = "0x4AAAAAAEJ2uotn4SNWraSt"
+TURNSTILE_SITEKEY = "0x4AAAAAAEJ5BcdKtupGc-f3"
 
 # Cron: alerta quando o orçamento diário está perto de esgotar.
 [triggers]
