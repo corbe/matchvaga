@@ -42,6 +42,15 @@ function showStatus(msg, kind) {
   el.className = "status" + (kind ? " " + kind : "");
 }
 
+// Barra de status ao vivo (topo, centralizado)
+function showLive(msg) {
+  $("liveText").textContent = msg;
+  $("liveBar").classList.remove("hidden");
+}
+function hideLive() {
+  $("liveBar").classList.add("hidden");
+}
+
 function esc(s) {
   const d = document.createElement("div");
   d.textContent = s == null ? "" : String(s);
@@ -139,18 +148,19 @@ const LOADING_STEPS = [
   "Lendo currículo",
   "Identificando requisitos da vaga",
   "Comparando experiências",
-  "Preparando resultado"
+  "Gerando análise completa..."
 ];
 
 function showLoading() {
   $("loading").classList.remove("hidden");
-  $("loadingMsg").textContent = LOADING_STEPS[0];
   $("progressBar").classList.add("active");
+  showLive(LOADING_STEPS[0]);
 }
 
 function hideLoading() {
   $("loading").classList.add("hidden");
   $("progressBar").classList.remove("active");
+  hideLive();
 }
 
 async function runAnalysis() {
@@ -203,7 +213,7 @@ async function runAnalysis() {
   const stepTimer = setInterval(() => {
     const elapsed = (Date.now() - started) / 1000;
     stepIdx = Math.min(Math.floor(elapsed / 3), LOADING_STEPS.length - 1);
-    $("loadingMsg").textContent = LOADING_STEPS[stepIdx];
+    showLive(LOADING_STEPS[stepIdx]);
   }, 800);
 
   try {
@@ -400,14 +410,15 @@ let unlockMsgTimer = null;
 
 function startUnlockSpinner() {
   if (unlockMsgTimer) clearInterval(unlockMsgTimer);
-  // Mensagem única + pontos animados: progresso visível, sem alternância de frases.
+  // Barra ao vivo no topo: "Confirmando pagamento" → "Gerando análise completa..."
+  const t0 = Date.now();
   const base = "Confirmando pagamento";
   let dots = 0;
-  $("status").textContent = base + "...";
-  $("status").classList.add("spinning");
+  showLive(base + "...");
   unlockMsgTimer = setInterval(() => {
     dots = dots >= 3 ? 0 : dots + 1;
-    $("status").textContent = base + ".".repeat(dots);
+    const msg = Date.now() - t0 > 8000 ? "Gerando análise completa" : base;
+    showLive(msg + ".".repeat(dots));
   }, 500);
 }
 
@@ -416,6 +427,7 @@ function stopUnlockSpinner() {
     clearInterval(unlockMsgTimer);
     unlockMsgTimer = null;
   }
+  hideLive();
   $("status").classList.remove("spinning");
 }
 

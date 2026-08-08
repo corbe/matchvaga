@@ -58,12 +58,17 @@ textarea:focus{outline:2px solid #11182722;border-color:var(--ink)}
 .muted{color:var(--muted)}
 .error{color:var(--red);font-weight:700;font-size:14px;text-align:center;margin-top:10px}
 
+/* ── Barra de status ao vivo ── */
+.live-bar{position:fixed;top:0;left:0;right:0;background:var(--ink);color:#fff;text-align:center;padding:15px 16px;font-weight:800;font-size:16px;z-index:200;box-shadow:0 4px 24px rgba(16,24,40,.25)}
+.live-bar .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:10px;animation:pulse 1s ease-in-out infinite;vertical-align:middle}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+
 /* ── Loading ── */
 .progress{height:8px;background:var(--soft);border-radius:99px;overflow:hidden}
 .progress-bar{height:100%;width:30%;background:var(--green);border-radius:99px}
 .progress-bar.active{animation:slide 1.2s ease-in-out infinite}
 @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(400%)}}
-.loading-msg{text-align:center;font-weight:800;margin-top:14px;font-size:16px}
+.loading-msg{display:none;text-align:center;font-weight:800;margin-top:14px;font-size:16px}
 
 /* ── Resultado ── */
 .score-block{text-align:center;padding:8px 0 4px;position:relative}
