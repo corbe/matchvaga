@@ -635,33 +635,27 @@ function clearTurnstileStub() {
 
 const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
-// Duas camadas de defesa:
-// 1) Tag <script> REAL (caminho normal — o api.js precisa achar a própria tag).
-// 2) Se um stub vencer a corrida, re-executa via eval no MESMO task da limpeza.
+// Carrega a API do Turnstile UMA única vez, via tag <script>.
+// NUNCA re-executar via eval: o api.js detecta window.turnstile existente
+// ("Turnstile already has been loaded") e desiste, deixando um objeto vazio.
 async function loadTurnstileScript() {
   if (window.turnstile && typeof window.turnstile.render === "function") return;
 
   clearTurnstileStub();
   document.querySelectorAll('script[src*="challenges.cloudflare.com/turnstile"]').forEach(s => s.remove());
 
-  const codePromise = fetch(TURNSTILE_SRC).then(r => r.text()).catch(() => null);
-
   await new Promise(resolve => {
     const s = document.createElement("script");
     s.src = TURNSTILE_SRC;
     s.async = true;
     s.onload = resolve;
-    s.onerror = resolve; // mesmo falhando, segue para o fallback via eval
+    s.onerror = resolve; // falhou → degradação graciosa (captcha é opcional)
     document.head.appendChild(s);
   });
 
-  if (window.turnstile && typeof window.turnstile.render === "function") return;
-
-  const code = await codePromise;
-  if (!code) throw new Error("api.js do Turnstile indisponível para fallback");
-  clearTurnstileStub();
-  (0, eval)(code);
-  if (typeof window.turnstile?.render !== "function") {
+  if (!(window.turnstile && typeof window.turnstile.render === "function")) {
+    console.warn("[turnstile] script carregado mas API não inicializou (keys: " +
+      (window.turnstile ? Object.keys(window.turnstile).join(",") : "none") + ")");
     throw new Error("API do Turnstile indisponível no navegador");
   }
 }
@@ -683,7 +677,9 @@ async function initTurnstile() {
       theme: "light"
     });
   } catch (err) {
-    console.error("[turnstile]", err);
+    // Esperado em máquinas com AV que bloqueia challenges.cloudflare.com —
+    // ruído de console, não um erro real: a análise segue sem captcha.
+    console.warn("[turnstile]", err?.message || err);
     // Degradação graciosa: sem captcha o usuário NÃO fica bloqueado.
     const msg = document.createElement("p");
     msg.className = "hint small";
