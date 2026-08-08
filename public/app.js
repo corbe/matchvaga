@@ -396,23 +396,19 @@ function renderResultFromState(pending) {
   $("paywall").classList.remove("hidden");
 }
 
-const UNLOCK_MSGS = [
-  "Confirmando pagamento...",
-  "Validando com a operadora...",
-  "Preparando seu relatório...",
-  "Quase lá..."
-];
 let unlockMsgTimer = null;
 
 function startUnlockSpinner() {
   if (unlockMsgTimer) clearInterval(unlockMsgTimer);
-  let i = 0;
-  $("status").textContent = UNLOCK_MSGS[0];
+  // Mensagem única + pontos animados: progresso visível, sem alternância de frases.
+  const base = "Confirmando pagamento";
+  let dots = 0;
+  $("status").textContent = base + "...";
   $("status").classList.add("spinning");
   unlockMsgTimer = setInterval(() => {
-    i = (i + 1) % UNLOCK_MSGS.length;
-    $("status").textContent = UNLOCK_MSGS[i];
-  }, 3000);
+    dots = dots >= 3 ? 0 : dots + 1;
+    $("status").textContent = base + ".".repeat(dots);
+  }, 500);
 }
 
 function stopUnlockSpinner() {
