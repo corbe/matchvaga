@@ -1,0 +1,34 @@
+# Config de deploy para a conta Cloudflare do domínio kubezen.com
+# (danielcorbehahnelatorre@gmail.com, account 97dd9a0dfcfca6eab9fa7f4581a1eeff).
+# Uso: CLOUDFLARE_API_TOKEN=<token> CLOUDFLARE_ACCOUNT_ID=97dd9a0dfcfca6eab9fa7f4581a1eeff \
+#        npx wrangler deploy --config wrangler.kubezen.toml
+# Mantém o wrangler.toml original (conta principal 9d9208cf...) intacto.
+name = "matchvaga"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# Garante que o Worker processe TODAS as requisições (headers de segurança,
+# rate limit etc.) antes do asset server servir arquivos estáticos.
+run_worker_first = true
+
+[[kv_namespaces]]
+binding = "RESULTS"
+id = "4b4bcdf6760c4edba345e0249732ba53"
+preview_id = "4b4bcdf6760c4edba345e0249732ba53"
+
+[vars]
+OPENAI_MODEL = "deepseek-v4-flash"
+PRICE_BRL = "9,90"
+PIX_KEY = "CONFIGURE_SUA_CHAVE_PIX"
+# Anti-abuso: máx. análises grátis por IP/hora e teto global diário.
+RATE_LIMIT_PER_HOUR = "3"
+DAILY_PREVIEW_BUDGET = "100"
+# Turnstile: mesmo sitekey do deploy principal (cobre kubezen.com também).
+TURNSTILE_SITEKEY = "0x4AAAAAAEJ5BcdKtupGc-f3"
+
+# Cron: alerta quando o orçamento diário está perto de esgotar.
+[triggers]
+crons = ["0 */6 * * *"]
