@@ -144,25 +144,43 @@ async function bump(env: Env, stage: FunnelStage) {
 // de 25s cobre picos de latência da DeepSeek e, se estourar, o botão
 // "Tentar novamente" inicia uma janela nova (e o rate limit é devolvido).
 // Tolerante a JSON truncado: se a IA cortar a resposta no meio (limite de
-// tokens), tenta fechar objetos/arrays pendentes antes de desistir.
+// tokens), tenta várias reparações antes de desistir.
 function parseLoose(text: string): any {
+  const balance = (t: string) => {
+    const openBraces = (t.match(/\{/g) || []).length;
+    const closeBraces = (t.match(/\}/g) || []).length;
+    const openBrackets = (t.match(/\[/g) || []).length;
+    const closeBrackets = (t.match(/\]/g) || []).length;
+    let out = t;
+    if (closeBrackets < openBrackets) out += "]".repeat(openBrackets - closeBrackets);
+    if (closeBraces < openBraces) out += "}".repeat(openBraces - closeBraces);
+    return out;
+  };
   try {
     return JSON.parse(text);
   } catch {
-    // tenta reparar: completa chaves/colchetes não fechados no fim
+    // tenta reparar
   }
-  const openBraces = (text.match(/\{/g) || []).length;
-  const closeBraces = (text.match(/\}/g) || []).length;
-  const openBrackets = (text.match(/\[/g) || []).length;
-  const closeBrackets = (text.match(/\]/g) || []).length;
-  let repaired = text;
-  if (closeBrackets < openBrackets) repaired += "]".repeat(openBrackets - closeBrackets);
-  if (closeBraces < openBraces) repaired += "}".repeat(openBraces - closeBraces);
-  try {
-    return JSON.parse(repaired);
-  } catch {
-    throw new Error("JSON inválido da IA");
+  const attempts: string[] = [];
+  // 1) fecha chaves/colchetes pendentes
+  attempts.push(balance(text));
+  // 2) string cortada no meio: corta na última aspa e fecha a string
+  const lastQuote = text.lastIndexOf('"');
+  if (lastQuote > 10) {
+    attempts.push(balance(text.slice(0, lastQuote + 1) + '"'));
+    attempts.push(balance(text.slice(0, lastQuote)));
   }
+  // 3) corta na última vírgula/dois-pontos (remove valor incompleto)
+  const lastComma = Math.max(text.lastIndexOf(","), text.lastIndexOf(":"));
+  if (lastComma > 10) attempts.push(balance(text.slice(0, lastComma)));
+  for (const t of attempts) {
+    try {
+      return JSON.parse(t);
+    } catch {
+      // próxima estratégia
+    }
+  }
+  throw new Error("JSON inválido da IA");
 }
 
 async function callOpenAI(env: Env, cv: string, job: string): Promise<PremiumResult> {
@@ -259,7 +277,52 @@ ${jobTrim}
   if (!outputText) throw new Error("OPENAI_EMPTY");
 
   // Normaliza: o JSON mode da DeepSeek não garante o schema — defaults seguros.
-  const parsed = parseLoose(outputText) as Partial<PremiumResult>;
+  let parsed: Partial<PremiumResult>;
+  try {
+    parsed = parseLoose(outputText) as Partial<PremiumResult>;
+  } catch {
+    // JSON inválido/truncado: UMA segunda tentativa com instrução compacta.
+    // Cabe no orçamento do Worker (falha típica ~5-12s + retry ~10s < 30s).
+    console.error("JSON inválido da IA na 1ª tentativa — retentando compacto");
+    const retryResponse = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${env.OPENAI_API_KEY}`,
+        "content-type": "application/json"
+      },
+      signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({
+        model: env.OPENAI_MODEL || "deepseek-v4-flash",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Você é um analista de currículos experiente e honesto. Responda APENAS com JSON válido, sem markdown, sem comentários. Nunca invente informações sobre o candidato."
+          },
+          {
+            role: "user",
+            content:
+              input +
+              "\n\nIMPORTANTE: sua resposta anterior foi inválida ou incompleta. Responda APENAS com JSON válido e COMPACTO (no máximo 1300 caracteres no total)."
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        thinking: { type: "disabled" },
+        max_tokens: 1200
+      })
+    });
+    if (retryResponse.ok) {
+      const retryData: any = await retryResponse.json();
+      let retryText = String(retryData?.choices?.[0]?.message?.content ?? "").trim();
+      if (retryText.startsWith("```")) {
+        retryText = retryText.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+      }
+      parsed = parseLoose(retryText) as Partial<PremiumResult>;
+    } else {
+      throw new Error("OPENAI_FAILED");
+    }
+  }
   const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
   const arr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
   const obj = <T extends Record<string, unknown>>(v: unknown): T | null =>
