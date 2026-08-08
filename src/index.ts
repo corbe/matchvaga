@@ -53,7 +53,7 @@ const securityHeaders: Record<string, string> = {
     "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com 'unsafe-eval'; " +
     "style-src 'self'; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com; " +
     "base-uri 'self'; form-action 'self'; frame-src https://challenges.cloudflare.com; " +
-    "worker-src https://challenges.cloudflare.com blob:; frame-ancestors 'none'"
+    "worker-src 'self' https://challenges.cloudflare.com blob:; frame-ancestors 'none'"
 };
 
 function json(data: unknown, status = 200) {

@@ -153,6 +153,53 @@
     return letters / cleaned.length > 0.6;
   }
 
+  // ── PDF (motor completo — pdf.js) ───────────────────────────────
+  // Segunda camada: se o extrator leve falhar ou devolver lixo, carrega o
+  // pdf.js (self-hosted, mesmo motor do Firefox) e extrai com ele. Só baixa
+  // os ~1MB quando um PDF realmente precisa. Sem CDN: nada para antivírus bloquear.
+  let pdfjsPromise = null;
+  function loadPdfJs() {
+    if (!pdfjsPromise) {
+      pdfjsPromise = (async () => {
+        const pdfjs = await import("/vendor/pdfjs/pdf.min.mjs");
+        pdfjs.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.mjs";
+        return pdfjs;
+      })();
+    }
+    return pdfjsPromise;
+  }
+
+  async function extractPdfTextFull(arrayBuffer) {
+    const pdfjs = await loadPdfJs();
+    const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+    const doc = await loadingTask.promise;
+    const lines = [];
+    try {
+      for (let p = 1; p <= doc.numPages; p++) {
+        const page = await doc.getPage(p);
+        const tc = await page.getTextContent();
+        let lastY = null;
+        let line = [];
+        for (const item of tc.items) {
+          const s = item.str || "";
+          if (!s) continue;
+          const y = item.transform ? item.transform[5] : 0;
+          if (lastY !== null && Math.abs(y - lastY) > 2) {
+            if (line.length) lines.push(line.join(" "));
+            line = [];
+          }
+          line.push(s);
+          lastY = y;
+        }
+        if (line.length) lines.push(line.join(" "));
+      }
+    } finally {
+      // No build legacy, o cleanup é no loadingTask (doc.destroy não existe).
+      await loadingTask.destroy().catch(() => {});
+    }
+    return lines.join("\n");
+  }
+
   // ── DOCX ────────────────────────────────────────────────────────
   function extractDocxText(arrayBuffer) {
     const zip = fflate.unzipSync(new Uint8Array(arrayBuffer));
@@ -169,7 +216,16 @@
     const buf = await file.arrayBuffer();
     let text;
     if (name.endsWith(".pdf") || file.type === "application/pdf") {
+      // 1) extrator leve (rápido, sem download extra)
       text = await extractPdfText(buf);
+      // 2) se o resultado não for legível, tenta o motor completo (pdf.js)
+      if (!isReadable(text)) {
+        try {
+          text = await extractPdfTextFull(buf);
+        } catch {
+          text = "";
+        }
+      }
     } else if (name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       text = extractDocxText(buf);
     } else {
