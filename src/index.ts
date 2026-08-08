@@ -234,12 +234,15 @@ async function compactRetry(env: Env, input: string): Promise<Partial<PremiumRes
   return JSON.parse(text) as Partial<PremiumResult>;
 }
 
-// Análise completa exige os campos longos (cv otimizado, mensagem, perguntas).
+// Análise completa exige os campos longos (cv otimizado, mensagem, perguntas)
+// E o schema V3 (recommendations, keywords, interpretation nos gaps).
 function isCompletePremium(p: PremiumResult): boolean {
   return !!p &&
     typeof p.optimized_cv === "string" && p.optimized_cv.length > 50 &&
     typeof p.recruiter_message === "string" && p.recruiter_message.length > 20 &&
-    Array.isArray(p.interview_questions) && p.interview_questions.length >= 1;
+    Array.isArray(p.interview_questions) && p.interview_questions.length >= 1 &&
+    Array.isArray(p.recommendations) && Array.isArray(p.keywords) &&
+    (!p.attention || !p.attention.length || typeof p.attention[0]?.interpretation === "string");
 }
 
 async function callOpenAI(env: Env, cv: string, job: string): Promise<PremiumResult> {
