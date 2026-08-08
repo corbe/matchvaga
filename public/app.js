@@ -396,7 +396,36 @@ function renderResultFromState(pending) {
   $("paywall").classList.remove("hidden");
 }
 
+const UNLOCK_MSGS = [
+  "Confirmando pagamento...",
+  "Validando com a operadora...",
+  "Preparando seu relatório...",
+  "Quase lá..."
+];
+let unlockMsgTimer = null;
+
+function startUnlockSpinner() {
+  if (unlockMsgTimer) clearInterval(unlockMsgTimer);
+  let i = 0;
+  $("status").textContent = UNLOCK_MSGS[0];
+  $("status").classList.add("spinning");
+  unlockMsgTimer = setInterval(() => {
+    i = (i + 1) % UNLOCK_MSGS.length;
+    $("status").textContent = UNLOCK_MSGS[i];
+  }, 3000);
+}
+
+function stopUnlockSpinner() {
+  if (unlockMsgTimer) {
+    clearInterval(unlockMsgTimer);
+    unlockMsgTimer = null;
+  }
+  $("status").classList.remove("spinning");
+}
+
 async function pollUnlock() {
+  // Spinner + mensagens rotativas: o usuário vê que está trabalhando.
+  startUnlockSpinner();
   // 90s de polling (45 × 2s): o flag paid: no KV pode levar até 60s para
   // propagar até o edge do usuário (eventual consistency do Cloudflare KV).
   for (let i = 0; i < 45; i++) {
@@ -408,6 +437,7 @@ async function pollUnlock() {
       });
       const data = await response.json().catch(() => null);
       if (response.ok && data && data.ok) {
+        stopUnlockSpinner();
         if (isGarbagePremium(data.premium)) {
           refuseGarbage();
           return;
@@ -424,10 +454,12 @@ async function pollUnlock() {
         return;
       }
       if (response.status === 404) {
+        stopUnlockSpinner();
         $("status").textContent = "Sua análise expirou. Gere uma nova gratuitamente.";
         return;
       }
       if (response.status !== 403) {
+        stopUnlockSpinner();
         $("status").textContent = "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
         $("retryUnlock").classList.remove("hidden");
         return;
@@ -437,6 +469,7 @@ async function pollUnlock() {
     }
     await new Promise(r => setTimeout(r, 2000));
   }
+  stopUnlockSpinner();
   // Pagamento pode ter sido confirmado (webhook) mas o flag ainda não
   // propagou no KV — dá o controle ao usuário em vez de desistir.
   $("status").textContent = "Ainda não conseguimos confirmar seu pagamento. Se você já pagou, clique abaixo para liberar sua análise.";

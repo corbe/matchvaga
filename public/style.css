@@ -50,6 +50,9 @@ textarea:focus{outline:2px solid #11182722;border-color:var(--ink)}
 .status{text-align:center;margin-top:12px;font-weight:700;font-size:15px;color:var(--red);min-height:22px}
 .status.ok{color:var(--green)}
 .status.error{color:var(--red)}
+.status.spinning{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted)}
+.status.spinning::before{content:"";width:18px;height:18px;border:3px solid #e5e7eb;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
 .hint{color:var(--faint);font-size:13px;margin-top:8px;text-align:center}
 .small{font-size:13px}
 .muted{color:var(--muted)}
