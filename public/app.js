@@ -61,10 +61,26 @@ function isGarbagePremium(p) {
      !(p.rewrites && p.rewrites.length));
 }
 
+// Relatório incompleto = IA fechou o JSON no limite (faltam campos longos).
+function isIncompletePremium(p) {
+  return !p || !p.optimized_cv || !p.recruiter_message ||
+    !(p.interview_questions && p.interview_questions.length);
+}
+
 function refuseGarbage() {
   sessionStorage.removeItem("mv-token");
   sessionStorage.removeItem("mv-pending");
   $("status").textContent = "Sua análise anterior não pôde ser gerada corretamente (o currículo não foi lido). Refaça a análise gratuitamente — o leitor de PDF foi corrigido.";
+  $("status").className = "status error";
+  $("premium").classList.add("hidden");
+  $("paywall").classList.add("hidden");
+  document.getElementById("form").scrollIntoView({ behavior: "smooth" });
+}
+
+function refuseIncomplete() {
+  sessionStorage.removeItem("mv-token");
+  sessionStorage.removeItem("mv-pending");
+  $("status").textContent = "Sua análise anterior ficou incompleta (gerada antes da correção do relatório). Rode a análise novamente para receber o kit completo — isso é gratuito.";
   $("status").className = "status error";
   $("premium").classList.add("hidden");
   $("paywall").classList.add("hidden");
@@ -393,6 +409,10 @@ async function pollUnlock() {
           refuseGarbage();
           return;
         }
+        if (isIncompletePremium(data.premium)) {
+          refuseIncomplete();
+          return;
+        }
         sessionStorage.removeItem("mv-pending");
         sessionStorage.setItem("mv-token", resultToken); // refresh-safe
         renderPremium(data.premium);
@@ -493,6 +513,10 @@ async function unlockDirect(token) {
     if (res.ok && data && data.ok) {
       if (isGarbagePremium(data.premium)) {
         refuseGarbage();
+        return;
+      }
+      if (isIncompletePremium(data.premium)) {
+        refuseIncomplete();
         return;
       }
       sessionStorage.removeItem("mv-pending");
@@ -690,6 +714,10 @@ if (savedToken) {
       if (res.ok && data && data.ok) {
         if (isGarbagePremium(data.premium)) {
           refuseGarbage();
+          return;
+        }
+        if (isIncompletePremium(data.premium)) {
+          refuseIncomplete();
           return;
         }
         renderPremium(data.premium);

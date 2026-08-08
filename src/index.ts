@@ -344,6 +344,24 @@ ${jobTrim}
     }
     if (retried) console.error("Usando retry compacto após JSON inválido na 1ª tentativa");
   }
+  const premium = normalizePremium(parsed);
+
+  // Completude: se a DeepSeek fechar o JSON no max_tokens (JSON válido mas sem
+  // os campos longos), roda o retry compacto que EXIGE todas as chaves.
+  if (!isCompletePremium(premium)) {
+    console.error("Análise incompleta na 1ª tentativa — retentando compacto");
+    try {
+      const retryPremium = normalizePremium(await compactRetry(env, input));
+      if (isCompletePremium(retryPremium)) return retryPremium;
+    } catch {
+      // aceita a melhor versão disponível
+    }
+  }
+  return premium;
+}
+
+// Normaliza o JSON da IA (o json_object da DeepSeek não garante o schema).
+function normalizePremium(parsed: Partial<PremiumResult>): PremiumResult {
   const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
   const arr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
   const obj = <T extends Record<string, unknown>>(v: unknown): T | null =>
