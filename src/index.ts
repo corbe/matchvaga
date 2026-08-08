@@ -104,9 +104,9 @@ async function contentHash(cv: string, job: string): Promise<string> {
 }
 
 // ── Funil de conversão (agregado, sem dados pessoais) ────────────
-// Etapas: view → analyze → checkout → paid. Contadores por dia (TTL 31d)
-// e totais (sem TTL). Expostos em GET /api/stats.
-const FUNNEL_STAGES = ["view", "analyze", "checkout", "paid"] as const;
+// Etapas: view → analyze → lead → checkout → paid. Contadores por dia
+// (TTL 31d) e totais (sem TTL). Expostos em GET /api/stats.
+const FUNNEL_STAGES = ["view", "analyze", "lead", "checkout", "paid"] as const;
 type FunnelStage = (typeof FUNNEL_STAGES)[number];
 
 async function bump(env: Env, stage: FunnelStage) {
@@ -481,6 +481,59 @@ async function handlePreview(request: Request, env: Env) {
   }
 }
 
+// ── Captura de lead (email) ─────────────────────────────────────
+// Guarda o email de quem analisou mas não pagou, para follow-up do dono.
+// Os emails ficam SÓ no KV (chave `lead:<email>`, valor = metadados) e nunca
+// são expostos por nenhum endpoint — o dono os lê via `wrangler kv key list`.
+const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+
+async function handleLead(request: Request, env: Env) {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "JSON inválido." }, 400);
+  }
+
+  const email = String(body?.email || "").trim().toLowerCase();
+  if (!EMAIL_RE.test(email) || email.length > 254) {
+    return json({ error: "Email inválido." }, 400);
+  }
+
+  // Rate limit por IP/hora: evita coleta de emails em massa.
+  const hour = new Date().toISOString().slice(0, 13);
+  if ((await checkAndIncrement(env, `rl-lead:${clientIp(request)}:${hour}`, 5, 3700)) === null) {
+    return json({ error: "Muitas tentativas. Aguarde um pouco." }, 429);
+  }
+
+  // Dedupe: mesmo email não é gravado duas vezes.
+  const key = `lead:${email}`;
+  if (await env.RESULTS.get(key)) {
+    return json({ ok: true, already: true });
+  }
+
+  // Associa (melhor esforço) token/score/gap_count para segmentação futura.
+  const token = String(body?.token || "");
+  const meta: Record<string, unknown> = { created_at: new Date().toISOString() };
+  if (/^[0-9a-f]{48}$/.test(token)) {
+    try {
+      const raw = await env.RESULTS.get(`result:${token}`);
+      if (raw) {
+        const premium = JSON.parse(raw) as PremiumResult;
+        meta.token = token;
+        meta.score = premium.score;
+        meta.gap_count = premium.missing.length;
+      }
+    } catch {
+      // melhor esforço
+    }
+  }
+
+  await env.RESULTS.put(key, JSON.stringify(meta));
+  await bump(env, "lead"); // etapa do funil: email capturado
+  return json({ ok: true });
+}
+
 async function handleUnlock(request: Request, env: Env) {
   let body: any;
   try {
@@ -548,7 +601,8 @@ async function handleStats(env: Env) {
   // Taxas de conversão do funil (evitando divisão por zero).
   const conv: Record<string, string> = {};
   if (total.view > 0) conv.analyze = `${Math.round((total.analyze / total.view) * 100)}%`;
-  if (total.analyze > 0) conv.checkout = `${Math.round((total.checkout / total.analyze) * 100)}%`;
+  if (total.analyze > 0) conv.lead = `${Math.round((total.lead / total.analyze) * 100)}%`;
+  if (total.lead > 0) conv.checkout = `${Math.round((total.checkout / total.lead) * 100)}%`;
   if (total.checkout > 0) conv.paid = `${Math.round((total.paid / total.checkout) * 100)}%`;
   return json({ day, today, total, conv });
 }
@@ -567,6 +621,10 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/api/preview") {
       return handlePreview(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/lead") {
+      return handleLead(request, env);
     }
 
     if (request.method === "POST" && url.pathname === "/api/unlock") {

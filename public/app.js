@@ -109,6 +109,62 @@ function renderPremium(p) {
   $("premium").scrollIntoView({ behavior: "smooth" });
 }
 
+// ── Captura de lead (email) ─────────────────────────────────────
+// Aparece junto do resultado, abaixo do paywall: quem não paga na hora
+// deixa o email para follow-up. Se já salvou nesta sessão, mostra o estado salvo.
+function revealLead() {
+  $("lead").classList.remove("hidden");
+  const saved = sessionStorage.getItem("mv-lead");
+  if (saved) {
+    $("leadForm").classList.add("hidden");
+    $("leadMsg").className = "lead-msg ok";
+    $("leadMsg").textContent = `Email salvo (${saved}). Sua análise continua disponível por 2 horas.`;
+  } else {
+    $("leadForm").classList.remove("hidden");
+    $("leadMsg").textContent = "";
+    $("leadMsg").className = "lead-msg";
+  }
+}
+
+$("leadForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("leadBtn");
+  const msg = $("leadMsg");
+  const email = $("leadEmail").value.trim();
+  msg.textContent = "";
+  msg.className = "lead-msg";
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    msg.textContent = "Digite um email válido.";
+    msg.className = "lead-msg error";
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Salvando...";
+  try {
+    const response = await fetch("/api/lead", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, token: resultToken })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Falha ao salvar.");
+    sessionStorage.setItem("mv-lead", email);
+    $("leadForm").classList.add("hidden");
+    msg.textContent = data.already
+      ? "Email já cadastrado. Sua análise continua disponível por 2 horas."
+      : "Email salvo! Sua análise continua disponível por 2 horas.";
+    msg.className = "lead-msg ok";
+  } catch (err) {
+    msg.textContent = err.message || "Erro inesperado.";
+    msg.className = "lead-msg error";
+  } finally {
+    button.disabled = false;
+    button.textContent = "Guardar minha análise";
+  }
+});
+
 // Alguns ambientes (extensões/tools de privacidade, navegadores automatizados)
 // poluem o protótipo com `turnstile` vazio. O api.js do Cloudflare vê
 // "turnstile" in window e recusa inicializar ("already has been loaded").
@@ -214,6 +270,7 @@ $("analyze").addEventListener("click", async () => {
 
     $("result").classList.remove("hidden");
     $("status").textContent = "";
+    revealLead();
     $("result").scrollIntoView({ behavior: "smooth" });
   } catch (err) {
     $("status").textContent = err.message || "Erro inesperado.";

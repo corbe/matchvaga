@@ -71,11 +71,12 @@ O Wrangler exibirá a URL pública `*.workers.dev`.
 ## Fluxo
 
 1. Usuário cola currículo + vaga.
-2. Worker chama a OpenAI.
+2. Worker chama a IA.
 3. Resultado premium fica no KV por 2 horas.
 4. Browser recebe somente score, quatro matches e quantidade de gaps.
-5. Usuário paga por Pix.
-6. Você envia o código.
+5. Quem não paga na hora pode deixar o email (`POST /api/lead`) — fica no KV
+   como `lead:<email>` para follow-up do dono (nunca exposto por API).
+6. Usuário paga (Stripe: cartão ou PIX) e o webhook libera automaticamente.
 7. `/api/unlock` busca o conteúdo premium no KV e libera.
 
 O conteúdo premium NÃO trafega no `/api/preview`.

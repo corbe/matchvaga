@@ -31,9 +31,17 @@ button:disabled{opacity:.55}
 .faq p{margin:6px 0 0;font-weight:400}
 .pay-btn{width:100%;margin-top:14px;padding:16px;font-size:16px;background:#0e9f6e}
 .pay-btn:hover{background:#0b8a5f}
+.lead-card{border:2px dashed #d0d5dd;box-shadow:none}
+.lead-form{display:flex;gap:10px;margin-top:12px}
+.lead-form input{flex:1;min-width:0;border:1px solid #d0d5dd;border-radius:12px;padding:12px 14px;font:inherit}
+.lead-form button{white-space:nowrap}
+.lead-msg{margin:10px 0 0;font-size:13px;font-weight:700}
+.lead-msg.ok{color:#0e9f6e}
+.lead-msg.error{color:#b42318}
 .example{border:2px solid #d0d5dd}
 .example .score-row{margin-top:8px}
 .example-cta{text-align:center;margin-top:22px}
 pre{white-space:pre-wrap;font-family:inherit;line-height:1.5}
 .footer{max-width:1000px;margin:0 auto;padding:0 16px 40px;color:#667085;font-size:13px;line-height:1.5}
 @media(max-width:720px){.grid{grid-template-columns:1fr}.score-row{align-items:flex-start;flex-direction:column}h1{font-size:34px}}
+@media(max-width:720px){.lead-form{flex-direction:column}.lead-form button{width:100%}}
