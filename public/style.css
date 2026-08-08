@@ -46,6 +46,7 @@ body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Robo
 textarea{width:100%;border:1px solid var(--line);border-radius:14px;padding:14px;font:inherit;font-size:16px;resize:vertical;background:#fff;color:var(--ink)}
 textarea:focus{outline:2px solid #11182722;border-color:var(--ink)}
 #form .cta{margin-top:20px}
+#retryUnlock{margin-top:10px}
 .turnstile{margin-top:14px;display:flex;justify-content:center;min-height:65px}
 .status{text-align:center;margin-top:12px;font-weight:700;font-size:15px;color:var(--red);min-height:22px}
 .status.ok{color:var(--green)}
