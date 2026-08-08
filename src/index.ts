@@ -349,6 +349,23 @@ async function handleCheckout(request: Request, env: Env) {
     return json({ error: "Sua análise expirou. Gere uma nova gratuitamente." }, 404);
   }
 
+  // NÃO deixa pagar por análise-lixo: se o currículo não pôde ser lido, o
+  // resultado vem sem forças/atenção/reescritas. Cobrar por isso é inadmissível.
+  let premium: PremiumResult | null = null;
+  try {
+    premium = JSON.parse(raw) as PremiumResult;
+  } catch {
+    // resultado corrompido — trata como lixo
+  }
+  const isGarbage = !premium ||
+    (!(premium.strengths && premium.strengths.length) &&
+     !(premium.attention && premium.attention.length) &&
+     !(premium.rewrites && premium.rewrites.length));
+  if (isGarbage) {
+    await env.RESULTS.delete(`result:${token}`).catch(() => {});
+    return json({ error: "Sua análise não pôde ser gerada corretamente (o currículo não foi lido). Refaça a análise gratuitamente." }, 422);
+  }
+
   // Evita pagamento duplicado: se já desbloqueou, não deixa pagar de novo.
   if ((await env.RESULTS.get(`paid:${token}`)) === "1") {
     return json({ error: "Esta análise já foi desbloqueada." }, 409);

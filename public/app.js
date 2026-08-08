@@ -53,6 +53,24 @@ function clearEl(id) {
   if (el) el.innerHTML = "";
 }
 
+// Análise-lixo = currículo não foi lido (nada de forças/atenção/reescritas).
+function isGarbagePremium(p) {
+  return !p ||
+    (!(p.strengths && p.strengths.length) &&
+     !(p.attention && p.attention.length) &&
+     !(p.rewrites && p.rewrites.length));
+}
+
+function refuseGarbage() {
+  sessionStorage.removeItem("mv-token");
+  sessionStorage.removeItem("mv-pending");
+  $("status").textContent = "Sua análise anterior não pôde ser gerada corretamente (o currículo não foi lido). Refaça a análise gratuitamente — o leitor de PDF foi corrigido.";
+  $("status").className = "status error";
+  $("premium").classList.add("hidden");
+  $("paywall").classList.add("hidden");
+  document.getElementById("form").scrollIntoView({ behavior: "smooth" });
+}
+
 // ── Upload de currículo (PDF/DOCX → texto, 100% client-side) ─────
 $("cvFile").addEventListener("change", async e => {
   const file = e.target.files && e.target.files[0];
@@ -369,6 +387,10 @@ async function pollUnlock() {
       });
       const data = await response.json().catch(() => null);
       if (response.ok && data && data.ok) {
+        if (isGarbagePremium(data.premium)) {
+          refuseGarbage();
+          return;
+        }
         sessionStorage.removeItem("mv-pending");
         sessionStorage.setItem("mv-token", resultToken); // refresh-safe
         renderPremium(data.premium);
@@ -456,6 +478,10 @@ async function unlockDirect(token) {
     });
     const data = await res.json().catch(() => null);
     if (res.ok && data && data.ok) {
+      if (isGarbagePremium(data.premium)) {
+        refuseGarbage();
+        return;
+      }
       sessionStorage.removeItem("mv-pending");
       sessionStorage.setItem("mv-token", token);
       renderPremium(data.premium);
@@ -627,6 +653,10 @@ if (savedToken) {
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data && data.ok) {
+        if (isGarbagePremium(data.premium)) {
+          refuseGarbage();
+          return;
+        }
         renderPremium(data.premium);
       } else if (res.status === 404) {
         sessionStorage.removeItem("mv-token");
