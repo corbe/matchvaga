@@ -148,7 +148,7 @@ const LOADING_STEPS = [
   "Lendo currículo",
   "Identificando requisitos da vaga",
   "Comparando experiências",
-  "Gerando análise completa..."
+  "Finalizando seu diagnóstico..."
 ];
 
 function showLoading() {
