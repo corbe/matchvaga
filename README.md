@@ -70,16 +70,28 @@ O Wrangler exibirá a URL pública `*.workers.dev`.
 
 ## Fluxo
 
-1. Usuário cola currículo + vaga.
-2. Worker chama a IA.
-3. Resultado premium fica no KV por 2 horas.
-4. Browser recebe somente score, quatro matches e quantidade de gaps.
-5. Quem não paga na hora pode deixar o email (`POST /api/lead`) — fica no KV
-   como `lead:<email>` para follow-up do dono (nunca exposto por API).
-6. Usuário paga (Stripe: cartão ou PIX) e o webhook libera automaticamente.
-7. `/api/unlock` busca o conteúdo premium no KV e libera.
+1. Visitante envia currículo (upload PDF/DOCX — extração 100% client-side, o
+   arquivo nunca sai do navegador; só o texto vai para a API) ou cola o texto.
+2. Worker chama a IA (deepseek-v4-flash) com o prompt de classificação:
+   score + vaga compreendida + pontos fortes + pontos de atenção + insights
+   bloqueados + reescritas + currículo otimizado + mensagem + perguntas.
+3. Resultado premium fica no KV por 24 horas.
+4. Diagnóstico grátis: score, requisitos da vaga, pontos fortes e 2 descobertas.
+5. Paywall contextual: "Encontramos mais N pontos" com títulos reais da análise.
+6. Pagamento (Stripe, cartão ou PIX) — webhook confirma server-side.
+7. `/api/unlock` libera o relatório completo (idempotente; refresh-safe).
 
 O conteúdo premium NÃO trafega no `/api/preview`.
+
+## Analytics
+
+Eventos (agregados, sem conteúdo pessoal) em `/api/stats`:
+
+landing_view → analysis_started → resume_uploaded → job_description_added →
+analysis_completed → result_viewed → locked_insights_viewed → unlock_clicked →
+checkout_started → payment_completed → full_report_viewed
+
+Taxas de conversão calculadas entre cada etapa, incluindo landing→paid.
 
 ## Operação (pontos que travam o funil se esquecidos)
 

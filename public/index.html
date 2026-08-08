@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MatchVaga — Veja o que falta no seu currículo para a vaga</title>
-  <meta name="description" content="Compare seu currículo com uma vaga real e receba um diagnóstico objetivo por IA: gaps, sugestões de correção e perguntas prováveis de entrevista. R$ 9,90.">
+  <title>MatchVaga — Compare seu currículo com a vaga</title>
+  <meta name="description" content="Descubra como seu currículo se compara aos requisitos da vaga e veja o que pode melhorar antes de se candidatar.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://matchvaga.kubezen.com/">
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='42' font-size='30' font-weight='bold' text-anchor='middle' fill='%23fff' font-family='Arial'%3EMV%3C/text%3E%3C/svg%3E">
   <!-- Open Graph (WhatsApp, Facebook, LinkedIn) -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="MatchVaga">
-  <meta property="og:title" content="MatchVaga — Veja o que falta no seu currículo para a vaga">
-  <meta property="og:description" content="Compare seu currículo com uma vaga real. Diagnóstico objetivo por IA: gaps, correções e perguntas prováveis de entrevista. R$ 9,90.">
+  <meta property="og:title" content="MatchVaga — Compare seu currículo com a vaga">
+  <meta property="og:description" content="Descubra como seu currículo se compara aos requisitos da vaga e veja o que pode melhorar antes de se candidatar.">
   <meta property="og:url" content="https://matchvaga.kubezen.com/">
   <meta property="og:image" content="https://matchvaga.kubezen.com/og.png">
   <meta property="og:image:width" content="1200">
@@ -20,134 +20,177 @@
   <meta property="og:locale" content="pt_BR">
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="MatchVaga — Veja o que falta no seu currículo para a vaga">
-  <meta name="twitter:description" content="Compare seu currículo com uma vaga real. Diagnóstico objetivo por IA. R$ 9,90.">
+  <meta name="twitter:title" content="MatchVaga — Compare seu currículo com a vaga">
+  <meta name="twitter:description" content="Descubra como seu currículo se compara aos requisitos da vaga e veja o que pode melhorar antes de se candidatar.">
   <meta name="twitter:image" content="https://matchvaga.kubezen.com/og.png">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <main class="wrap">
-    <section class="hero">
+
+    <!-- HERO (ferramenta, não página de vendas) -->
+    <header class="hero">
       <div class="eyebrow">MATCHVAGA</div>
-      <h1>Veja o que está faltando no seu currículo para esta vaga.</h1>
-      <p class="lead">
-        Compare seu currículo com uma vaga real. Receba um diagnóstico objetivo sem inventar experiências.
-      </p>
+      <h1>Seu currículo está mostrando que você combina com esta vaga?</h1>
+      <p class="sub">Compare seu currículo com os requisitos da vaga e veja o que está bem demonstrado — e o que pode estar passando despercebido.</p>
+      <a href="#form" class="cta cta-primary">Analisar meu currículo</a>
+      <p class="hero-note">Grátis para analisar · Sem cadastro</p>
+    </header>
 
-      <div class="grid">
-        <label>
-          <span>Seu currículo</span>
-          <textarea id="cv" placeholder="Cole aqui o texto do seu currículo..."></textarea>
-        </label>
+    <!-- FORMULÁRIO -->
+    <section id="form" class="panel form-panel">
+      <h2 class="form-title">Compare com a vaga</h2>
 
-        <label>
-          <span>Descrição da vaga</span>
-          <textarea id="job" placeholder="Cole aqui a vaga completa..."></textarea>
-        </label>
-      </div>
+      <label class="field">
+        <span>Currículo</span>
+        <span class="upload" id="uploadArea">
+          <input type="file" id="cvFile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+          <span class="upload-box">
+            <span class="upload-icon" aria-hidden="true">📄</span>
+            <span id="uploadText">Enviar PDF ou DOCX</span>
+            <span class="upload-hint">clique para escolher o arquivo</span>
+          </span>
+        </span>
+      </label>
+      <p id="fileInfo" class="file-info hidden"><span id="fileName"></span><button type="button" id="removeFile">Remover</button></p>
+      <p class="privacy">🔒 Seu currículo é utilizado para realizar esta análise.</p>
 
-      <button id="analyze">Ver diagnóstico grátis</button>
+      <details class="paste-toggle">
+        <summary>Prefere colar o texto do currículo?</summary>
+        <textarea id="cvText" placeholder="Cole aqui o texto do seu currículo..."></textarea>
+      </details>
+
+      <label class="field">
+        <span>Descrição da vaga</span>
+        <textarea id="job" rows="6" placeholder="Cole aqui a descrição da vaga"></textarea>
+      </label>
+
+      <button id="analyze" class="cta cta-primary" type="button">Analisar compatibilidade →</button>
       <div id="turnstile" class="turnstile"></div>
-      <p id="status" class="status"></p>
-      <p class="hint">A análise é feita por IA e pode levar de 10 a 40 segundos.</p>
+      <p id="status" class="status" role="alert"></p>
     </section>
 
-    <section id="example" class="panel example">
-      <div class="eyebrow">EXEMPLO REAL</div>
-      <h2>O que você recebe</h2>
-      <p class="lead">Análise real (currículo fictício) de uma dev full stack para uma vaga de fintech.</p>
-      <div class="score-row">
-        <div>
-          <div class="score"><span id="exScore">0</span>%</div>
-          <div class="muted">aderência estimada</div>
-        </div>
-        <div class="pill"><span id="exGaps">0</span> gaps encontrados</div>
-      </div>
-      <div class="grid">
-        <div class="card"><h3>O que faltava no currículo</h3><ul id="exMissing"></ul></div>
-        <div class="card"><h3>Como corrigir</h3><ul id="exSuggestions"></ul></div>
-      </div>
-      <div class="card">
-        <h3>Currículo otimizado (trecho)</h3>
-        <pre id="exOptimized"></pre>
-      </div>
-      <div class="card">
-        <h3>Perguntas prováveis na entrevista</h3>
-        <ul id="exQuestions"></ul>
-      </div>
-      <div class="example-cta">
-        <button id="exCta">Quero essa análise para o meu currículo</button>
-      </div>
+    <!-- LOADING -->
+    <section id="loading" class="panel hidden" aria-live="polite">
+      <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+      <p id="loadingMsg" class="loading-msg">Lendo currículo</p>
     </section>
 
+    <!-- RESULTADO -->
     <section id="result" class="panel hidden">
-      <div class="score-row">
-        <div>
-          <div class="score"><span id="score">0</span>%</div>
-          <div class="muted">aderência estimada</div>
+      <div class="score-block">
+        <div class="score"><span id="score">0</span><span class="pct">%</span></div>
+        <h2 class="score-label">Compatibilidade com a vaga</h2>
+        <button type="button" class="score-tip" id="scoreTip" aria-label="O que significa o score">ⓘ</button>
+      </div>
+      <p id="scoreExplanation" class="score-explanation"></p>
+
+      <div class="section-block">
+        <h3>O que identificamos nesta vaga</h3>
+        <div id="requirements"></div>
+      </div>
+
+      <div class="section-block">
+        <h3>O que seu currículo demonstra bem</h3>
+        <ul id="strengthsList" class="check-list"></ul>
+      </div>
+
+      <div class="section-block">
+        <h3>Um ponto que merece atenção</h3>
+        <div id="attentionFirst"></div>
+      </div>
+      <div class="section-block" id="attentionSecondBlock">
+        <h3>Segunda descoberta</h3>
+        <div id="attentionSecond"></div>
+      </div>
+
+      <!-- PAYWALL CONTEXTUAL -->
+      <div class="paywall hidden" id="paywall">
+        <h2 id="paywallTitle">Encontramos mais 5 pontos nesta análise</h2>
+        <ul class="locked-list" id="lockedInsights"></ul>
+        <button id="pay" class="cta cta-pay" type="button">Ver análise completa</button>
+        <p class="once">R$ 9,90 · pagamento único</p>
+        <p id="payError" class="error" role="alert"></p>
+      </div>
+
+      <!-- RELATÓRIO COMPLETO -->
+      <section id="premium" class="premium hidden">
+        <h2 class="premium-title">Análise completa</h2>
+
+        <div class="card">
+          <h3>Compatibilidade</h3>
+          <p class="p-score"><span id="pScore">0</span>%</p>
+          <p id="pScoreExplanation"></p>
         </div>
-        <div class="pill"><span id="gapCount">0</span> gaps encontrados</div>
-      </div>
 
-      <div class="card">
-        <h2>Pontos encontrados</h2>
-        <ul id="matched"></ul>
-      </div>
+        <div class="card">
+          <h3>Requisitos identificados</h3>
+          <div class="table-wrap">
+            <table id="reqTable">
+              <thead><tr><th>Requisito</th><th>Situação</th><th>Evidência</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
 
-      <div class="paywall" id="paywall">
-        <h2>Seu diagnóstico completo</h2>
-        <p class="pain">Os <span id="gapCount">0</span> gaps acima podem estar te custando entrevistas. Veja como corrigir cada um:</p>
-        <ul class="benefits">
-          <li>Gaps detalhados e o que exatamente falta para esta vaga</li>
-          <li>Sugestões práticas e acionáveis, sem inventar experiência</li>
-          <li>Currículo reescrito e otimizado para a vaga</li>
-          <li>Mensagem pronta para enviar ao recrutador</li>
-          <li>Perguntas prováveis da entrevista, com respostas na ponta da língua</li>
-        </ul>
-        <div class="price">R$ <span id="price">9,90</span></div>
-        <p class="anchor muted small">Uma reescrita profissional de currículo custa R$ 200–500.</p>
-        <button id="pay" class="pay-btn">Pagar e desbloquear agora</button>
-        <p class="muted small">Cartão ou PIX. Pagamento seguro pelo Stripe — acesso liberado automaticamente após a confirmação.</p>
-        <p class="guarantee">Garantia de 7 dias: se não achar útil, devolvemos 100%.</p>
-        <p id="unlockError" class="error"></p>
-        <details class="faq">
-          <summary>É seguro? Meus dados ficam salvos?</summary>
-          Seu currículo é usado exclusivamente para gerar a análise, fica armazenado por no máximo 2 horas e não é compartilhado com terceiros (LGPD).
-        </details>
-        <details class="faq">
-          <summary>Quanto tempo demora?</summary>
-          A análise leva de 10 a 40 segundos. O desbloqueio é automático assim que o pagamento confirma.
-        </details>
-        <details class="faq">
-          <summary>É preciso? A IA inventa informações?</summary>
-          O sistema é treinado para nunca inventar experiência, tecnologia ou resultado. Ele reorganiza e melhora a redação apenas com fatos do seu currículo.
-        </details>
-      </div>
+        <div class="card">
+          <h3>Melhorias</h3>
+          <div id="pAttention"></div>
+        </div>
 
-      <section id="lead" class="panel lead-card hidden">
-        <h2>Vai pagar depois?</h2>
-        <p class="lead">Deixe seu email para guardar sua análise e receber dicas de currículo. Sem spam, sem compromisso.</p>
-        <form id="leadForm" class="lead-form" novalidate>
-          <input id="leadEmail" type="email" placeholder="seu@email.com" autocomplete="email" required>
-          <button type="submit" id="leadBtn">Guardar minha análise</button>
-        </form>
-        <p id="leadMsg" class="lead-msg"></p>
+        <div class="card">
+          <h3>Reescrita de trechos</h3>
+          <div id="pRewrites"></div>
+        </div>
+
+        <div class="card">
+          <h3>Currículo otimizado para a vaga</h3>
+          <pre id="pOptimized"></pre>
+          <p class="note">Otimizar ≠ inventar: nada foi adicionado além do que já está no seu currículo.</p>
+        </div>
+
+        <div class="card">
+          <h3>Mensagem para o recrutador</h3>
+          <pre id="pMessage"></pre>
+        </div>
+
+        <div class="card">
+          <h3>Preparação para entrevista</h3>
+          <ul id="pQuestions"></ul>
+        </div>
       </section>
+    </section>
 
-      <section id="premium" class="hidden">
-        <div class="card"><h2>Gaps</h2><ul id="missing"></ul></div>
-        <div class="card"><h2>Como melhorar</h2><ul id="suggestions"></ul></div>
-        <div class="card"><h2>Currículo otimizado</h2><pre id="optimized"></pre></div>
-        <div class="card"><h2>Mensagem para recrutador</h2><pre id="message"></pre></div>
-        <div class="card"><h2>Perguntas prováveis</h2><ul id="questions"></ul></div>
-      </section>
+    <!-- FAQ -->
+    <section class="panel faq">
+      <h2>Perguntas frequentes</h2>
+      <details class="faq-item"><summary>A análise é realmente grátis?</summary>
+        <p>Sim. Você vê seu diagnóstico inicial antes de decidir se deseja desbloquear o conteúdo completo.</p>
+      </details>
+      <details class="faq-item"><summary>Preciso criar uma conta?</summary>
+        <p>Não. Nenhum cadastro é necessário.</p>
+      </details>
+      <details class="faq-item"><summary>O MatchVaga garante entrevista?</summary>
+        <p>Não. O MatchVaga ajuda a identificar diferenças entre o currículo e os requisitos da vaga e sugere melhorias.</p>
+      </details>
+      <details class="faq-item"><summary>O pagamento é recorrente?</summary>
+        <p>Não. É um pagamento único para aquela análise.</p>
+      </details>
+      <details class="faq-item"><summary>O MatchVaga inventa experiências?</summary>
+        <p>Não. As sugestões utilizam somente informações reais fornecidas por você.</p>
+      </details>
+      <details class="faq-item"><summary>O que acontece com meu currículo?</summary>
+        <p>O texto do seu currículo é usado apenas para gerar sua análise, fica armazenado temporariamente na infraestrutura da Cloudflare e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.</p>
+      </details>
     </section>
   </main>
 
   <footer class="footer">
-    <p><strong>Aviso de privacidade (LGPD):</strong> seu currículo é usado exclusivamente para gerar a análise, fica armazenado por no máximo 2 horas e não é compartilhado com terceiros. Para solicitar a exclusão dos seus dados, entre em contato pelo formulário do site.</p>
+    <p><strong>Aviso de privacidade:</strong> seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.</p>
   </footer>
 
+  <script src="/vendor-fflate.js"></script>
+  <script src="/extract.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

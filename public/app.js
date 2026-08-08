@@ -1,50 +1,267 @@
+"use strict";
+
 let resultToken = null;
 let turnstileWidget = null;
+let cvText = ""; // texto extraído do arquivo (o arquivo em si nunca é enviado)
+let analyzing = false;
+const firedEvents = new Set();
 
 const $ = id => document.getElementById(id);
 
-// Exemplo real (currículo fictício) gerado pelo próprio produto — vitrine da landing.
-const EXAMPLE_RESULT = {
-  score: 75,
-  missing: ["testes automatizados", "metodologias ágeis", "experiência com pagamentos"],
-  suggestions: [
-    "Adicione uma seção de habilidades listando explicitamente testes automatizados (ex.: Jest, Mocha) e metodologias ágeis (ex.: Scrum, Kanban).",
-    "Inclua um projeto onde você escreveu testes unitários ou de integração, mesmo que pessoal.",
-    "Mencione participação em sprints, daily stand-ups ou uso de Jira.",
-    "Se tiver qualquer contato com sistemas de pagamento (ex.: Stripe, PayPal), destaque-o."
-  ],
-  optimized_cv: "Ana Souza\nDesenvolvedora Full Stack | Node.js, TypeScript, React\n\nResumo:\nDesenvolvedora Full Stack com 4 anos de experiência na construção de aplicações web escaláveis. Especializada em Node.js, TypeScript e React, com sólida experiência em APIs REST, bancos de dados relacionais e deploy em nuvem. Comunicação em inglês avançado.\n\nExperiência Profissional:\nDesenvolvedora Full Stack | Empresa XYZ | [Período]\n- Desenvolvi e mantive APIs REST utilizando Node.js, Express e PostgreSQL, garantindo alta performance e confiabilidade.\n- Implementei interfaces de usuário com React e Next.js, melhorando a experiência do usuário.\n- Configurei ambientes com Docker e automatizei pipelines de CI/CD com GitHub Actions, reduzindo o tempo de deploy.\n- Colaborei com equipes multidisciplinares em ambiente ágil, participando de sprints e cerimônias do time.\n\nFormação:\nBacharel em Ciência da Computação — UFMG\n\nIdiomas:\nInglês avançado",
-  interview_questions: [
-    "Descreva um desafio técnico que você enfrentou ao desenvolver uma API REST e como o resolveu.",
-    "Como você garante a qualidade do código? Fale sobre sua experiência com testes automatizados.",
-    "Você já trabalhou com metodologias ágeis? Como lida com mudanças de requisitos durante um sprint?"
-  ]
-};
-
-function renderExample() {
-  $("exScore").textContent = EXAMPLE_RESULT.score;
-  $("exGaps").textContent = EXAMPLE_RESULT.missing.length;
-  fillList("exMissing", EXAMPLE_RESULT.missing);
-  fillList("exSuggestions", EXAMPLE_RESULT.suggestions);
-  fillList("exQuestions", EXAMPLE_RESULT.interview_questions);
-  $("exOptimized").textContent = EXAMPLE_RESULT.optimized_cv;
+// ── Analytics (só contadores agregados — nunca conteúdo) ─────────
+async function track(stage) {
+  if (firedEvents.has(stage)) return;
+  firedEvents.add(stage);
+  try {
+    await fetch("/api/event", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stage })
+    });
+  } catch {
+    // analytics nunca deve quebrar o fluxo
+  }
 }
 
-$("exCta").addEventListener("click", () => {
-  $("cv").scrollIntoView({ behavior: "smooth", block: "center" });
-  setTimeout(() => $("cv").focus(), 400);
+function trackOnView(id, stage) {
+  const el = $(id);
+  if (!el) return;
+  const obs = new IntersectionObserver(entries => {
+    if (entries.some(e => e.isIntersecting)) {
+      track(stage);
+      obs.disconnect();
+    }
+  }, { threshold: 0.3 });
+  obs.observe(el);
+}
+
+// ── Helpers de UI ────────────────────────────────────────────────
+function showStatus(msg, kind) {
+  const el = $("status");
+  el.textContent = msg;
+  el.className = "status" + (kind ? " " + kind : "");
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
+function clearEl(id) {
+  const el = $(id);
+  if (el) el.innerHTML = "";
+}
+
+// ── Upload de currículo (PDF/DOCX → texto, 100% client-side) ─────
+$("cvFile").addEventListener("change", async e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  track("resume_uploaded");
+  $("fileInfo").classList.remove("hidden");
+  $("fileName").textContent = file.name;
+  $("uploadText").textContent = "Currículo carregado";
+  showStatus("Lendo o arquivo...", "ok");
+  try {
+    const text = await extractFileText(file);
+    if (text.trim().length < 40) {
+      cvText = "";
+      showStatus("Não conseguimos ler o texto deste PDF (pode ser escaneado). Prefere colar o texto manualmente?", "error");
+      $("paste-toggle")?.setAttribute("open", "");
+    } else {
+      cvText = text;
+      showStatus("Currículo lido ✓ " + text.length + " caracteres extraídos.", "ok");
+    }
+  } catch (err) {
+    cvText = "";
+    showStatus(err && err.message ? err.message : "Não foi possível ler o arquivo. Tente outro ou cole o texto.", "error");
+  }
 });
 
-function fillList(id, items) {
-  const el = $(id);
-  el.innerHTML = "";
-  (items || []).forEach(item => {
-    const li = document.createElement("li");
-    li.textContent = item;
-    el.appendChild(li);
-  });
+$("removeFile").addEventListener("click", () => {
+  cvText = "";
+  $("cvFile").value = "";
+  $("fileInfo").classList.add("hidden");
+  $("uploadText").textContent = "Enviar PDF ou DOCX";
+  showStatus("", "");
+});
+
+// ── Vaga ─────────────────────────────────────────────────────────
+$("job").addEventListener("input", () => {
+  if ($("job").value.trim().length > 10) track("job_description_added");
+});
+
+// ── Análise ──────────────────────────────────────────────────────
+const LOADING_STEPS = [
+  "Lendo currículo",
+  "Identificando requisitos da vaga",
+  "Comparando experiências",
+  "Preparando resultado"
+];
+
+function showLoading() {
+  $("loading").classList.remove("hidden");
+  $("loadingMsg").textContent = LOADING_STEPS[0];
+  $("progressBar").classList.add("active");
 }
 
+function hideLoading() {
+  $("loading").classList.add("hidden");
+  $("progressBar").classList.remove("active");
+}
+
+async function runAnalysis() {
+  if (analyzing) return;
+  analyzing = true;
+
+  const job = $("job").value.trim();
+  const pasted = $("cvText").value.trim();
+  const cv = cvText || pasted;
+
+  $("result").classList.add("hidden");
+  $("premium").classList.add("hidden");
+  $("paywall").classList.add("hidden");
+  showStatus("", "");
+
+  if (!cv) {
+    showStatus("Envie seu currículo (PDF ou DOCX) ou cole o texto.", "error");
+    analyzing = false;
+    return;
+  }
+  if (!job) {
+    showStatus("Cole a descrição da vaga para compararmos.", "error");
+    analyzing = false;
+    return;
+  }
+
+  const btn = $("analyze");
+  btn.disabled = true;
+  btn.textContent = "Analisando...";
+  showLoading();
+
+  // Rotaciona as mensagens de progresso SEM atrasar a API.
+  const started = Date.now();
+  let stepIdx = 0;
+  const stepTimer = setInterval(() => {
+    const elapsed = (Date.now() - started) / 1000;
+    stepIdx = Math.min(Math.floor(elapsed / 3), LOADING_STEPS.length - 1);
+    $("loadingMsg").textContent = LOADING_STEPS[stepIdx];
+  }, 800);
+
+  try {
+    const turnstileToken = turnstileWidget ? window.turnstile.getResponse(turnstileWidget) : "";
+    const response = await fetch("/api/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cv, job, turnstile: turnstileToken })
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data) {
+      throw new Error(data && data.error ? data.error : "Falha na análise.");
+    }
+
+    resultToken = data.token;
+    renderResult(data);
+  } catch (err) {
+    showFriendlyError(err);
+  } finally {
+    clearInterval(stepTimer);
+    hideLoading();
+    btn.disabled = false;
+    btn.textContent = "Analisar compatibilidade →";
+    if (turnstileWidget) window.turnstile.reset(turnstileWidget);
+    analyzing = false;
+  }
+}
+
+function renderResult(data) {
+  const p = data.preview;
+  const locked = p.counts.locked || p.locked_insights.length;
+
+  $("score").textContent = p.score;
+  $("scoreExplanation").textContent = p.score_explanation || "";
+
+  // O que identificamos nesta vaga
+  clearEl("requirements");
+  (p.requirements || []).forEach(req => {
+    const block = document.createElement("div");
+    block.className = "req-cat";
+    const title = document.createElement("div");
+    title.className = "req-cat-title";
+    title.textContent = req.category;
+    block.appendChild(title);
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    (req.items || []).forEach(it => {
+      const c = document.createElement("span");
+      c.className = "chip";
+      c.textContent = it;
+      chips.appendChild(c);
+    });
+    block.appendChild(chips);
+    $("requirements").appendChild(block);
+  });
+
+  // O que seu currículo demonstra bem
+  clearEl("strengthsList");
+  (p.strengths || []).forEach(s => {
+    const li = document.createElement("li");
+    li.innerHTML = `<strong>${esc(s.requirement)}</strong><div class="item-note">${esc(s.explanation)}</div>`;
+    $("strengthsList").appendChild(li);
+  });
+
+  // Um ponto que merece atenção + Segunda descoberta
+  const attention = p.attention || [];
+  clearEl("attentionFirst");
+  if (attention[0]) $("attentionFirst").appendChild(attentionCard(attention[0]));
+  clearEl("attentionSecond");
+  if (attention[1]) {
+    $("attentionSecond").appendChild(attentionCard(attention[1]));
+    $("attentionSecondBlock").style.display = "";
+  } else {
+    $("attentionSecondBlock").style.display = "none";
+  }
+
+  // Paywall contextual
+  $("paywallTitle").textContent = `Encontramos mais ${locked} pontos nesta análise`;
+  clearEl("lockedInsights");
+  (p.locked_insights || []).forEach(t => {
+    const li = document.createElement("li");
+    li.innerHTML = `🔒 ${esc(t)}`;
+    $("lockedInsights").appendChild(li);
+  });
+
+  $("result").classList.remove("hidden");
+  $("paywall").classList.remove("hidden");
+  // analysis_completed é contado no servidor (handlePreview), não aqui.
+
+  trackOnView("paywall", "locked_insights_viewed");
+  trackOnView("result", "result_viewed");
+
+  $("result").scrollIntoView({ behavior: "smooth" });
+}
+
+function attentionCard(a) {
+  const div = document.createElement("div");
+  div.className = "attention-card";
+  div.innerHTML = `<strong>${esc(a.requirement)}</strong>` +
+    `<div class="attention-part"><span class="lbl">A vaga pede</span> ${esc(a.what_we_found)}</div>` +
+    `<div class="attention-part"><span class="lbl">No seu currículo</span> ${esc(a.in_your_cv)}</div>` +
+    (a.what_to_do ? `<div class="attention-part what-to-do">${esc(a.what_to_do)}</div>` : "");
+  return div;
+}
+
+function showFriendlyError(err) {
+  const msg = err && err.message ? err.message : "";
+  const friendly = /já foi desbloqueada|Limite diário|Muitas análises/i.test(msg) ? msg
+    : "Não conseguimos concluir sua análise. Tente novamente.";
+  showStatus(friendly, "error");
+  const btn = $("analyze");
+  btn.textContent = "Tentar novamente";
+  btn.disabled = false;
+}
+
+// ── Pagamento ────────────────────────────────────────────────────
 function restorePending() {
   try {
     return JSON.parse(sessionStorage.getItem("mv-pending") || "null");
@@ -53,25 +270,68 @@ function restorePending() {
   }
 }
 
-// Se veio de volta do Stripe (?checkout=success), restaura o estado e
-// fica sondando o unlock até o webhook confirmar o pagamento.
 function handleCheckoutReturn() {
   const params = new URLSearchParams(location.search);
   const pending = restorePending();
   if (params.get("checkout") === "success" && pending) {
     history.replaceState({}, "", location.pathname);
     resultToken = pending.token;
-    $("score").textContent = pending.score;
-    $("gapCount").textContent = pending.gap_count;
-    $("price").textContent = pending.price;
-    fillList("matched", pending.matched);
-    $("result").classList.remove("hidden");
-    $("status").textContent = "Aguardando confirmação do pagamento...";
+    renderResultFromState(pending);
+    $("status").textContent = "Pagamento confirmado. Liberando sua análise...";
     pollUnlock();
   } else if (params.get("checkout") === "cancel") {
     history.replaceState({}, "", location.pathname);
-    $("status").textContent = "Pagamento cancelado. Você pode tentar novamente.";
+    $("status").textContent = "Pagamento não concluído. Nenhuma cobrança foi confirmada. Você pode tentar novamente.";
   }
+}
+
+function renderResultFromState(pending) {
+  $("score").textContent = pending.score;
+  $("scoreExplanation").textContent = pending.score_explanation || "";
+  clearEl("requirements");
+  (pending.requirements || []).forEach(req => {
+    const block = document.createElement("div");
+    block.className = "req-cat";
+    const title = document.createElement("div");
+    title.className = "req-cat-title";
+    title.textContent = req.category;
+    block.appendChild(title);
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    (req.items || []).forEach(it => {
+      const c = document.createElement("span");
+      c.className = "chip";
+      c.textContent = it;
+      chips.appendChild(c);
+    });
+    block.appendChild(chips);
+    $("requirements").appendChild(block);
+  });
+  clearEl("strengthsList");
+  (pending.strengths || []).forEach(s => {
+    const li = document.createElement("li");
+    li.innerHTML = `<strong>${esc(s.requirement)}</strong><div class="item-note">${esc(s.explanation)}</div>`;
+    $("strengthsList").appendChild(li);
+  });
+  clearEl("attentionFirst");
+  clearEl("attentionSecond");
+  const attention = pending.attention || [];
+  if (attention[0]) $("attentionFirst").appendChild(attentionCard(attention[0]));
+  if (attention[1]) {
+    $("attentionSecond").appendChild(attentionCard(attention[1]));
+    $("attentionSecondBlock").style.display = "";
+  } else {
+    $("attentionSecondBlock").style.display = "none";
+  }
+  $("paywallTitle").textContent = pending.paywall_title || "Encontramos mais pontos nesta análise";
+  clearEl("lockedInsights");
+  (pending.locked_insights || []).forEach(t => {
+    const li = document.createElement("li");
+    li.innerHTML = `🔒 ${esc(t)}`;
+    $("lockedInsights").appendChild(li);
+  });
+  $("result").classList.remove("hidden");
+  $("paywall").classList.remove("hidden");
 }
 
 async function pollUnlock() {
@@ -82,97 +342,161 @@ async function pollUnlock() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token: resultToken, code: "" })
       });
-      const data = await response.json();
-      if (response.ok && data.ok) {
+      const data = await response.json().catch(() => null);
+      if (response.ok && data && data.ok) {
         sessionStorage.removeItem("mv-pending");
+        sessionStorage.setItem("mv-token", resultToken); // refresh-safe
         renderPremium(data.premium);
         $("status").textContent = "";
         return;
       }
-      if (response.status === 403) break; // pagamento ainda não confirmado
+      if (response.status === 404) {
+        $("status").textContent = "Sua análise expirou. Gere uma nova gratuitamente.";
+        return;
+      }
+      if (response.status !== 403) {
+        $("status").textContent = "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
+        return;
+      }
     } catch {
       // tenta de novo
     }
     await new Promise(r => setTimeout(r, 2000));
   }
-  $("status").textContent = "Pagamento ainda não confirmado. Tente desbloquear em instantes.";
+  $("status").textContent = "Pagamento ainda não confirmado. Tente novamente em instantes.";
 }
 
-function renderPremium(p) {
-  fillList("missing", p.missing);
-  fillList("suggestions", p.suggestions);
-  fillList("questions", p.interview_questions);
-  $("optimized").textContent = p.optimized_cv || "";
-  $("message").textContent = p.recruiter_message || "";
-  $("premium").classList.remove("hidden");
-  $("paywall").classList.add("hidden"); // já pagou — some o card de pagamento
-  $("premium").scrollIntoView({ behavior: "smooth" });
-}
-
-// ── Captura de lead (email) ─────────────────────────────────────
-// Aparece junto do resultado, abaixo do paywall: quem não paga na hora
-// deixa o email para follow-up. Se já salvou nesta sessão, mostra o estado salvo.
-function revealLead() {
-  $("lead").classList.remove("hidden");
-  const saved = sessionStorage.getItem("mv-lead");
-  if (saved) {
-    $("leadForm").classList.add("hidden");
-    $("leadMsg").className = "lead-msg ok";
-    $("leadMsg").textContent = `Email salvo (${saved}). Sua análise continua disponível por 2 horas.`;
-  } else {
-    $("leadForm").classList.remove("hidden");
-    $("leadMsg").textContent = "";
-    $("leadMsg").className = "lead-msg";
-  }
-}
-
-$("leadForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const button = $("leadBtn");
-  const msg = $("leadMsg");
-  const email = $("leadEmail").value.trim();
-  msg.textContent = "";
-  msg.className = "lead-msg";
-
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-    msg.textContent = "Digite um email válido.";
-    msg.className = "lead-msg error";
-    return;
-  }
-
+$("pay").addEventListener("click", async () => {
+  const button = $("pay");
+  if (button.disabled) return; // duplo clique
   button.disabled = true;
-  button.textContent = "Salvando...";
+  $("payError").textContent = "";
+  track("unlock_clicked");
+
   try {
-    const response = await fetch("/api/lead", {
+    if (!resultToken) throw new Error("Faça uma análise primeiro.");
+
+    const response = await fetch("/api/checkout", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, token: resultToken })
+      body: JSON.stringify({ token: resultToken })
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Falha ao salvar.");
-    sessionStorage.setItem("mv-lead", email);
-    $("leadForm").classList.add("hidden");
-    msg.textContent = data.already
-      ? "Email já cadastrado. Sua análise continua disponível por 2 horas."
-      : "Email salvo! Sua análise continua disponível por 2 horas.";
-    msg.className = "lead-msg ok";
+    const data = await response.json().catch(() => null);
+
+    if (response.status === 409) {
+      // já desbloqueada — tenta liberar direto
+      resultToken && unlockDirect(resultToken);
+      return;
+    }
+    if (!response.ok || !data || !data.url) {
+      throw new Error((data && data.error) || "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.");
+    }
+
+    // Guarda o estado para restaurar ao voltar do Stripe.
+    sessionStorage.setItem("mv-pending", JSON.stringify({
+      token: resultToken,
+      score: $("score").textContent,
+      score_explanation: $("scoreExplanation").textContent,
+      requirements: Array.from(document.querySelectorAll("#requirements .req-cat")).map(cat => ({
+        category: cat.querySelector(".req-cat-title").textContent,
+        items: Array.from(cat.querySelectorAll(".chip")).map(c => c.textContent)
+      })),
+      strengths: Array.from(document.querySelectorAll("#strengthsList li")).map(li => ({
+        requirement: li.querySelector("strong").textContent,
+        explanation: li.querySelector(".item-note") ? li.querySelector(".item-note").textContent : ""
+      })),
+      attention: Array.from(document.querySelectorAll(".attention-card")).map(card => ({
+        requirement: card.querySelector("strong").textContent,
+        what_we_found: card.querySelector(".attention-part .lbl") ? card.querySelector(".attention-part .lbl").nextSibling.textContent.trim() : "",
+        in_your_cv: "",
+        what_to_do: card.querySelector(".what-to-do") ? card.querySelector(".what-to-do").textContent : ""
+      })),
+      locked_insights: Array.from(document.querySelectorAll("#lockedInsights li")).map(li => li.textContent.replace(/^🔒\s*/, "")),
+      paywall_title: $("paywallTitle").textContent
+    }));
+
+    location.href = data.url;
   } catch (err) {
-    msg.textContent = err.message || "Erro inesperado.";
-    msg.className = "lead-msg error";
-  } finally {
+    $("payError").textContent = err && err.message ? err.message : "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
     button.disabled = false;
-    button.textContent = "Guardar minha análise";
   }
 });
 
-// Alguns ambientes (extensões/tools de privacidade, navegadores automatizados)
-// poluem o protótipo com `turnstile` vazio. O api.js do Cloudflare vê
-// "turnstile" in window e recusa inicializar ("already has been loaded").
-// Remove o stub herdado antes de carregar o script real.
+async function unlockDirect(token) {
+  try {
+    const res = await fetch("/api/unlock", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, code: "" })
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data && data.ok) {
+      sessionStorage.removeItem("mv-pending");
+      sessionStorage.setItem("mv-token", token);
+      renderPremium(data.premium);
+    } else {
+      $("payError").textContent = (data && data.error) || "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
+    }
+  } finally {
+    $("pay").disabled = false;
+  }
+}
+
+// ── Relatório completo ───────────────────────────────────────────
+function renderPremium(p) {
+  $("pScore").textContent = p.score;
+  $("pScoreExplanation").textContent = p.score_explanation || "";
+
+  const tbody = document.querySelector("#reqTable tbody");
+  tbody.innerHTML = "";
+  (p.table || []).forEach(row => {
+    const tr = document.createElement("tr");
+    const sitClass = row.situation.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    tr.innerHTML = `<td>${esc(row.requirement)}</td><td class="sit sit-${sitClass}">${esc(row.situation)}</td><td>${esc(row.evidence)}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  clearEl("pAttention");
+  (p.attention || []).forEach(a => {
+    const div = document.createElement("div");
+    div.className = "improvement";
+    div.innerHTML = `<h4>${esc(a.requirement)}</h4>` +
+      `<div class="attention-part"><span class="lbl">O que encontramos</span> ${esc(a.what_we_found)}</div>` +
+      `<div class="attention-part"><span class="lbl">No seu currículo</span> ${esc(a.in_your_cv)}</div>` +
+      (a.what_to_do ? `<div class="attention-part what-to-do"><span class="lbl">O que fazer</span> ${esc(a.what_to_do)}</div>` : "");
+    $("pAttention").appendChild(div);
+  });
+
+  clearEl("pRewrites");
+  (p.rewrites || []).forEach(r => {
+    const div = document.createElement("div");
+    div.className = "rewrite";
+    div.innerHTML = `<div class="rewrite-orig"><span class="lbl">Original</span>${esc(r.original)}</div>` +
+      `<div class="rewrite-sug"><span class="lbl">Sugestão</span>${esc(r.suggestion)}</div>` +
+      (r.why ? `<div class="rewrite-why"><span class="lbl">Por quê</span>${esc(r.why)}</div>` : "");
+    $("pRewrites").appendChild(div);
+  });
+
+  $("pOptimized").textContent = p.optimized_cv || "";
+  $("pMessage").textContent = p.recruiter_message || "";
+
+  clearEl("pQuestions");
+  (p.interview_questions || []).forEach(q => {
+    const li = document.createElement("li");
+    li.textContent = q;
+    $("pQuestions").appendChild(li);
+  });
+
+  $("paywall").classList.add("hidden");
+  $("premium").classList.remove("hidden");
+  track("full_report_viewed");
+  $("premium").scrollIntoView({ behavior: "smooth" });
+}
+
+// ── Turnstile ────────────────────────────────────────────────────
 function clearTurnstileStub() {
   if (!("turnstile" in window)) return;
-  if (window.turnstile && typeof window.turnstile.render === "function") return; // API real
-
+  if (window.turnstile && typeof window.turnstile.render === "function") return;
   let p = window;
   while (p) {
     try {
@@ -184,41 +508,30 @@ function clearTurnstileStub() {
   }
 }
 
-// Carrega o api.js do Turnstile. Duas camadas de defesa:
-// 1) Tag <script> REAL (caminho normal — o api.js precisa achar a própria tag
-//    no DOM via querySelectorAll para inicializar por completo).
-// 2) Se um stub (extensão/tool que polui window.turnstile) vencer a corrida
-//    contra o load da tag, re-executa o código via eval no MESMO task da
-//    limpeza do stub — nenhum timer consegue repoluir entre o delete e o eval.
-//    (A tag inserida no passo 1 continua no DOM, então o api.js se localiza.)
 const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
+// Duas camadas de defesa:
+// 1) Tag <script> REAL (caminho normal — o api.js precisa achar a própria tag).
+// 2) Se um stub vencer a corrida, re-executa via eval no MESMO task da limpeza.
 async function loadTurnstileScript() {
-  // API real já presente? Nada a fazer.
   if (window.turnstile && typeof window.turnstile.render === "function") return;
 
   clearTurnstileStub();
-  // Remove tags injetadas por tools/extensões — o api.js detecta a tag
-  // existente e se recusa a inicializar de novo.
   document.querySelectorAll('script[src*="challenges.cloudflare.com/turnstile"]').forEach(s => s.remove());
 
-  // Busca o código em paralelo, para o fallback via eval estar pronto.
   const codePromise = fetch(TURNSTILE_SRC).then(r => r.text()).catch(() => null);
 
   await new Promise(resolve => {
     const s = document.createElement("script");
     s.src = TURNSTILE_SRC;
     s.async = true;
-    // Mesmo se a tag falhar (ex.: extensão/AV bloqueando o domínio), segue
-    // para o fallback via eval — a tag continua no DOM para o api.js se localizar.
     s.onload = resolve;
-    s.onerror = resolve;
+    s.onerror = resolve; // mesmo falhando, segue para o fallback via eval
     document.head.appendChild(s);
   });
 
   if (window.turnstile && typeof window.turnstile.render === "function") return;
 
-  // Stub venceu a corrida: limpa + eval atômico.
   const code = await codePromise;
   if (!code) throw new Error("api.js do Turnstile indisponível para fallback");
   clearTurnstileStub();
@@ -232,7 +545,7 @@ async function initTurnstile() {
   try {
     const res = await fetch("/api/config");
     const config = await res.json();
-    if (!config.turnstile_sitekey) return; // não configurado → sem captcha
+    if (!config.turnstile_sitekey) return;
 
     await loadTurnstileScript();
 
@@ -246,99 +559,55 @@ async function initTurnstile() {
     });
   } catch (err) {
     console.error("[turnstile]", err);
-    // Degradação graciosa: sem captcha o usuário NÃO fica bloqueado — a
-    // análise funciona igual (protegida por limite de uso por IP).
+    // Degradação graciosa: sem captcha o usuário NÃO fica bloqueado.
     const msg = document.createElement("p");
     msg.className = "hint small";
-    msg.textContent =
-      "O captcha não carregou (bloqueador ou antivírus?). Sem problema: " +
-      "a análise continua disponível, com limite de uso por IP.";
+    msg.textContent = "O captcha não carregou (bloqueador ou antivírus?). Sem problema: a análise continua disponível, com limite de uso por IP.";
     $("turnstile").appendChild(msg);
   }
 }
 
-$("analyze").addEventListener("click", async () => {
-  const button = $("analyze");
-  button.disabled = true;
-  $("result").classList.add("hidden");
-  $("premium").classList.add("hidden");
-  $("paywall").classList.remove("hidden"); // nova análise = novo pagamento possível
-
-  const started = Date.now();
-  $("status").textContent = "Analisando...";
-  const timer = setInterval(() => {
-    const s = Math.round((Date.now() - started) / 1000);
-    $("status").textContent = `Analisando... ${s}s (pode levar até 40s)`;
-  }, 1000);
-
-  try {
-    const turnstileToken = turnstileWidget ? window.turnstile.getResponse(turnstileWidget) : "";
-    const response = await fetch("/api/preview", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        cv: $("cv").value,
-        job: $("job").value,
-        turnstile: turnstileToken
-      })
-    });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Falha na análise.");
-
-    resultToken = data.token;
-    $("score").textContent = data.preview.score;
-    $("gapCount").textContent = data.preview.gap_count;
-    $("price").textContent = data.price;
-    fillList("matched", data.preview.matched);
-
-    $("result").classList.remove("hidden");
-    $("status").textContent = "";
-    revealLead();
-    $("result").scrollIntoView({ behavior: "smooth" });
-  } catch (err) {
-    $("status").textContent = err.message || "Erro inesperado.";
-  } finally {
-    clearInterval(timer);
-    button.disabled = false;
-    if (turnstileWidget) window.turnstile.reset(turnstileWidget);
-  }
+// ── Init ─────────────────────────────────────────────────────────
+$("analyze").addEventListener("click", runAnalysis);
+$("cvText").addEventListener("input", () => {
+  if ($("cvText").value.trim().length > 40) track("resume_uploaded");
 });
-
-$("pay").addEventListener("click", async () => {
-  const button = $("pay");
-  button.disabled = true;
-  $("unlockError").textContent = "";
-
-  try {
-    if (!resultToken) throw new Error("Faça uma análise primeiro.");
-
-    const response = await fetch("/api/checkout", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: resultToken })
-    });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Falha ao iniciar pagamento.");
-
-    // Guarda o estado para restaurar ao voltar do Stripe.
-    sessionStorage.setItem("mv-pending", JSON.stringify({
-      token: resultToken,
-      score: $("score").textContent,
-      gap_count: $("gapCount").textContent,
-      price: $("price").textContent,
-      matched: Array.from($("matched").children).map(li => li.textContent)
-    }));
-
-    location.href = data.url;
-  } catch (err) {
-    $("unlockError").textContent = err.message || "Erro inesperado.";
-  } finally {
-    button.disabled = false;
+$("scoreTip").addEventListener("click", () => {
+  const tip = $("scoreTip");
+  const note = document.createElement("p");
+  note.className = "tip-text";
+  note.textContent = "O score compara informações encontradas no currículo com os requisitos identificados na vaga. Ele não prevê contratação.";
+  if (tip.dataset.open) {
+    tip.nextElementSibling && tip.nextElementSibling.classList.contains("tip-text") && tip.nextElementSibling.remove();
+    delete tip.dataset.open;
+  } else {
+    tip.insertAdjacentElement("afterend", note);
+    tip.dataset.open = "1";
   }
 });
 
 initTurnstile();
 handleCheckoutReturn();
-renderExample();
+
+// Refresh-safe: quem já pagou recupera o relatório ao voltar.
+const savedToken = sessionStorage.getItem("mv-token");
+if (savedToken) {
+  resultToken = savedToken;
+  (async () => {
+    try {
+      const res = await fetch("/api/unlock", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: savedToken, code: "" })
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data && data.ok) {
+        renderPremium(data.premium);
+      } else if (res.status === 404) {
+        sessionStorage.removeItem("mv-token");
+      }
+    } catch {
+      // silencioso
+    }
+  })();
+}

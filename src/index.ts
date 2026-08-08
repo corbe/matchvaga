@@ -15,11 +15,19 @@ interface Env {
   ALERT_WEBHOOK_URL: string;
 }
 
+type Strength = { requirement: string; explanation: string };
+type Attention = { requirement: string; what_we_found: string; in_your_cv: string; what_to_do: string };
+type Rewrite = { original: string; suggestion: string; why: string };
+
 type PremiumResult = {
   score: number;
-  matched: string[];
-  missing: string[];
-  suggestions: string[];
+  score_explanation: string;
+  requirements: { category: string; items: string[] }[];
+  table: { requirement: string; situation: string; evidence: string }[];
+  strengths: Strength[];
+  attention: Attention[];
+  locked_insights: string[];
+  rewrites: Rewrite[];
   optimized_cv: string;
   recruiter_message: string;
   interview_questions: string[];
@@ -87,8 +95,7 @@ async function refund(env: Env, key: string, ttl: number) {
 }
 
 // Incrementa um contador no KV com TTL. Retorna o novo valor, ou null quando o
-// limite já foi atingido. (KV é eventualmente consistente: em rajadas extremas o
-// contador pode subestimar levemente — para contagem exata seria Durable Objects.)
+// limite já foi atingido.
 async function checkAndIncrement(env: Env, key: string, limit: number, ttl: number): Promise<number | null> {
   const current = await kvCount(env, key);
   if (current >= limit) return null;
@@ -106,9 +113,20 @@ async function contentHash(cv: string, job: string): Promise<string> {
 }
 
 // ── Funil de conversão (agregado, sem dados pessoais) ────────────
-// Etapas: view → analyze → lead → checkout → paid. Contadores por dia
-// (TTL 31d) e totais (sem TTL). Expostos em GET /api/stats.
-const FUNNEL_STAGES = ["view", "analyze", "lead", "checkout", "paid"] as const;
+// Etapas medidas. Contadores por dia (TTL 31d) e totais (sem TTL).
+const FUNNEL_STAGES = [
+  "landing_view",
+  "analysis_started",
+  "resume_uploaded",
+  "job_description_added",
+  "analysis_completed",
+  "result_viewed",
+  "locked_insights_viewed",
+  "unlock_clicked",
+  "checkout_started",
+  "payment_completed",
+  "full_report_viewed"
+] as const;
 type FunnelStage = (typeof FUNNEL_STAGES)[number];
 
 async function bump(env: Env, stage: FunnelStage) {
@@ -120,31 +138,58 @@ async function bump(env: Env, stage: FunnelStage) {
   await env.RESULTS.put(totalKey, String(totalCount + 1));
 }
 
+// Tenta até 2x: picos de latência da DeepSeek são transitórios e não devem
+// derrubar a análise do usuário. O refund de cota só acontece se AMBAS falharem.
 async function callOpenAI(env: Env, cv: string, job: string): Promise<PremiumResult> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await callOpenAIOnce(env, cv, job);
+    } catch (err) {
+      lastErr = err;
+      console.error(`callOpenAI tentativa ${attempt + 1} falhou:`, err);
+    }
+  }
+  throw lastErr;
+}
+
+async function callOpenAIOnce(env: Env, cv: string, job: string): Promise<PremiumResult> {
   const input = `
 Compare rigorosamente o currículo com a vaga.
 
-REGRAS:
-- Não invente experiência.
-- Não invente tecnologias.
-- Não invente resultados.
-- O currículo otimizado pode reorganizar e melhorar a redação, mas apenas com fatos existentes.
-- Produza sugestões concretas.
-- As perguntas de entrevista devem ser plausíveis para esta vaga.
-- SEJA CONCISO: optimized_cv com no máximo 2500 caracteres, suggestions com no
-  máximo 6 itens, interview_questions com no máximo 6 itens.
+REGRAS DE INTEGRIDADE (obrigatórias):
+- NUNCA invente experiência, empresa, cargo, tecnologia, certificação ou resultado.
+- "Não encontrado no currículo" NÃO significa "o candidato não possui": quando um requisito da vaga não aparecer no currículo, diga que NÃO FOI ENCONTRADO no currículo, nunca que o candidato não tem a experiência.
+- Não transforme conhecimento teórico em experiência profissional.
+- Não ensine o candidato a mentir.
+- O currículo otimizado pode melhorar clareza, reordenar, destacar e usar a terminologia da vaga QUANDO VERDADEIRA — mas APENAS com fatos existentes no currículo.
+- Quando faltar informação: "Se você realmente possui experiência com X, considere evidenciá-la melhor no currículo."
 
-FORMATO DE RESPOSTA:
-Responda com um objeto JSON com EXATAMENTE estas chaves (sem chaves extras, sem comentários):
+FORMATO DE RESPOSTA (JSON válido, sem markdown, EXATAMENTE estas chaves):
 {
-  "score": <inteiro 0-100>,
-  "matched": [<string>, ...],
-  "missing": [<string>, ...],
-  "suggestions": [<string>, ...],
-  "optimized_cv": <string>,
-  "recruiter_message": <string>,
-  "interview_questions": [<string>, ...]
+  "score": <inteiro 0-100 — grau de alinhamento entre currículo e requisitos; NÃO é chance de contratação>,
+  "score_explanation": "<1-2 frases>",
+  "requirements": [{"category":"<ex.: Backend>","items":["<requisitos da vaga>"]}],
+  "table": [{"requirement":"<requisito>","situation":"Forte|Compatível|Melhorar|Gap","evidence":"Encontrado claramente|Encontrado|Pouco evidenciado|Não encontrado"}],
+  "strengths": [{"requirement":"<requisito>","explanation":"<por que está bem demonstrado, citando o currículo>"}],
+  "attention": [{"requirement":"<requisito que merece atenção>","what_we_found":"<o que a vaga pede>","in_your_cv":"<o que encontramos (ou não) no currículo, sem afirmar que o candidato não sabe>","what_to_do":"<ação honesta>"}],
+  "locked_insights": ["<título curto de descoberta adicional, ex.: 'Experiência com Kubernetes pode estar sub-representada'>"],
+  "rewrites": [{"original":"<trecho REAL do currículo>","suggestion":"<versão melhorada SEM inventar>","why":"<explicação curta>"}],
+  "optimized_cv": "<currículo adaptado à vaga, SEM inventar nada>",
+  "recruiter_message": "<mensagem curta e honesta para o recrutador>",
+  "interview_questions": ["<perguntas prováveis para esta vaga e este currículo>"]
 }
+
+REGRAS ADICIONAIS:
+- requirements: agrupe os requisitos da vaga em 2-4 categorias.
+- table: cubra os requisitos principais (5-10 linhas), com evidência honesta.
+- strengths: no máximo 4 itens.
+- attention: no máximo 4 itens (os 2 primeiros serão exibidos gratuitamente).
+- locked_insights: 4-5 títulos curtos e específicos DESTA análise (o que o relatório completo revela).
+- rewrites: 2-3 trechos reais do currículo com sugestão honesta de melhoria.
+- optimized_cv: máximo 2500 caracteres.
+- interview_questions: no máximo 6.
+SEJA CONCISO.
 
 CURRÍCULO:
 ${cv}
@@ -159,23 +204,20 @@ ${job}
       "authorization": `Bearer ${env.OPENAI_API_KEY}`,
       "content-type": "application/json"
     },
-    // Workers mata requisições com mais de ~30s; aborta antes com erro limpo.
-    signal: AbortSignal.timeout(28000),
+    // 2 tentativas de até 14s cabem no limite de execução do Worker (~30s).
+    signal: AbortSignal.timeout(14000),
     body: JSON.stringify({
       model: env.OPENAI_MODEL || "deepseek-v4-flash",
       messages: [
         {
           role: "system",
           content:
-            "Você é um analista de currículos experiente. Responda APENAS com JSON válido, sem markdown, sem comentários."
+            "Você é um analista de currículos experiente e honesto. Responda APENAS com JSON válido, sem markdown, sem comentários. Nunca invente informações sobre o candidato."
         },
         { role: "user", content: input }
       ],
       response_format: { type: "json_object" },
       temperature: 0.3,
-      // deepseek-v4-flash é um modelo de raciocínio: sem controles, ele "pensa"
-      // por muito tempo e pode estourar o limite do Worker. Desligar o raciocínio
-      // + cap de saída deixou os testes em ~11s com JSON completo.
       thinking: { type: "disabled" },
       max_tokens: 4000
     })
@@ -188,27 +230,50 @@ ${job}
   }
 
   const data: any = await response.json();
-
-  let outputText = data?.choices?.[0]?.message?.content ?? "";
-  outputText = outputText.trim();
-  // Tolera fences markdown que o modelo eventualmente adicione.
+  let outputText = String(data?.choices?.[0]?.message?.content ?? "").trim();
   if (outputText.startsWith("```")) {
     outputText = outputText.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   }
-
   if (!outputText) throw new Error("OPENAI_EMPTY");
 
-  // Normaliza a resposta: o JSON mode da DeepSeek não garante o schema,
-  // então qualquer campo ausente/errado vira um default seguro.
+  // Normaliza: o JSON mode da DeepSeek não garante o schema — defaults seguros.
   const parsed = JSON.parse(outputText) as Partial<PremiumResult>;
+  const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
+  const arr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
+  const obj = <T extends Record<string, unknown>>(v: unknown): T | null =>
+    v && typeof v === "object" ? (v as T) : null;
+
   return {
-    score: typeof parsed.score === "number" ? parsed.score : 50,
-    matched: Array.isArray(parsed.matched) ? parsed.matched : [],
-    missing: Array.isArray(parsed.missing) ? parsed.missing : [],
-    suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
-    optimized_cv: typeof parsed.optimized_cv === "string" ? parsed.optimized_cv : "",
-    recruiter_message: typeof parsed.recruiter_message === "string" ? parsed.recruiter_message : "",
-    interview_questions: Array.isArray(parsed.interview_questions) ? parsed.interview_questions : []
+    score: typeof parsed.score === "number" && parsed.score >= 0 && parsed.score <= 100 ? parsed.score : 50,
+    score_explanation: str(parsed.score_explanation, "Análise do alinhamento entre seu currículo e a vaga."),
+    requirements: arr(parsed.requirements).map(obj).filter(Boolean).slice(0, 4).map(r => ({
+      category: str(r!.category, "Requisitos"),
+      items: arr(r!.items).filter(i => typeof i === "string").slice(0, 12) as string[]
+    })),
+    table: arr(parsed.table).map(obj).filter(Boolean).slice(0, 10).map(t => ({
+      requirement: str(t!.requirement, "Requisito"),
+      situation: str(t!.situation, "Melhorar"),
+      evidence: str(t!.evidence, "—")
+    })),
+    strengths: arr(parsed.strengths).map(obj).filter(Boolean).slice(0, 4).map(s => ({
+      requirement: str(s!.requirement, "Requisito"),
+      explanation: str(s!.explanation, "Bem demonstrado no currículo.")
+    })),
+    attention: arr(parsed.attention).map(obj).filter(Boolean).slice(0, 4).map(a => ({
+      requirement: str(a!.requirement, "Requisito"),
+      what_we_found: str(a!.what_we_found, "A vaga menciona este requisito."),
+      in_your_cv: str(a!.in_your_cv, "Não encontramos claramente no currículo."),
+      what_to_do: str(a!.what_to_do, "Se você realmente possui esta experiência, considere evidenciá-la melhor no currículo.")
+    })),
+    locked_insights: arr(parsed.locked_insights).filter(i => typeof i === "string").slice(0, 5) as string[],
+    rewrites: arr(parsed.rewrites).map(obj).filter(Boolean).slice(0, 3).map(r => ({
+      original: str(r!.original, ""),
+      suggestion: str(r!.suggestion, ""),
+      why: str(r!.why, "")
+    })),
+    optimized_cv: str(parsed.optimized_cv, ""),
+    recruiter_message: str(parsed.recruiter_message, ""),
+    interview_questions: arr(parsed.interview_questions).filter(q => typeof q === "string").slice(0, 6) as string[]
   } as PremiumResult;
 }
 
@@ -238,29 +303,40 @@ function brlToCents(price: string): number {
   return Number.isFinite(n) ? Math.round(n * 100) : 990;
 }
 
+const RESULT_TTL = 86400; // análise fica disponível 24h (tempo para pagar)
+
 async function handleCheckout(request: Request, env: Env) {
   if (!env.STRIPE_SECRET_KEY) {
-    return json({ error: "Pagamento via Stripe não configurado." }, 503);
+    return json({ error: "Pagamento indisponível no momento. Tente novamente em instantes." }, 503);
   }
 
   let body: any;
   try {
     body = await request.json();
   } catch {
-    return json({ error: "JSON inválido." }, 400);
+    return json({ error: "Requisição inválida." }, 400);
   }
 
   const token = String(body?.token || "");
   if (!/^[0-9a-f]{48}$/.test(token)) {
-    return json({ error: "Token inválido." }, 400);
+    return json({ error: "Sessão expirada. Gere uma nova análise." }, 400);
   }
 
   const raw = await env.RESULTS.get(`result:${token}`);
   if (!raw) {
-    return json({ error: "Resultado expirado. Gere uma nova análise." }, 404);
+    return json({ error: "Sua análise expirou. Gere uma nova gratuitamente." }, 404);
   }
 
-  const origin = request.headers.get("origin") || `http://${request.headers.get("host") || "localhost"}`;
+  // Evita pagamento duplicado: se já desbloqueou, não deixa pagar de novo.
+  if ((await env.RESULTS.get(`paid:${token}`)) === "1") {
+    return json({ error: "Esta análise já foi desbloqueada." }, 409);
+  }
+
+  // Renova o prazo da análise (24h a partir do início do pagamento), para o
+  // usuário não perder o conteúdo depois de pagar.
+  await env.RESULTS.put(`result:${token}`, raw, { expirationTtl: RESULT_TTL });
+
+  const origin = request.headers.get("origin") || `https://${request.headers.get("host") || "matchvaga.kubezen.com"}`;
   const form = new URLSearchParams();
   form.set("mode", "payment");
   form.set("success_url", `${origin}/?checkout=success`);
@@ -269,7 +345,7 @@ async function handleCheckout(request: Request, env: Env) {
   form.set("line_items[0][quantity]", "1");
   form.set("line_items[0][price_data][currency]", "brl");
   form.set("line_items[0][price_data][unit_amount]", String(brlToCents(env.PRICE_BRL)));
-  form.set("line_items[0][price_data][product_data][name]", "MatchVaga — Candidatura otimizada");
+  form.set("line_items[0][price_data][product_data][name]", "MatchVaga — Kit para esta candidatura");
 
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
@@ -283,9 +359,9 @@ async function handleCheckout(request: Request, env: Env) {
   const data: any = await res.json();
   if (!res.ok || !data?.url) {
     console.error("Stripe error", res.status, JSON.stringify(data));
-    return json({ error: "Falha ao criar pagamento." }, 502);
+    return json({ error: "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente." }, 502);
   }
-  await bump(env, "checkout"); // etapa 3 do funil: checkout iniciado
+  await bump(env, "checkout_started");
   return json({ url: data.url });
 }
 
@@ -338,17 +414,19 @@ async function handleStripeWebhook(request: Request, env: Env) {
   if (type === "checkout.session.completed" || type === "checkout.session.async_payment_succeeded") {
     const token = String(payload?.data?.object?.metadata?.token || "");
     if (/^[0-9a-f]{48}$/.test(token)) {
-      await env.RESULTS.put(`paid:${token}`, "1", { expirationTtl: 7200 });
-      console.log(`[stripe] pagamento confirmado para token ${token.slice(0, 8)}…`);
-      await bump(env, "paid"); // etapa 4 do funil: pagamento confirmado
+      // Idempotente: webhooks do Stripe são reentregues — não conta pagamento 2x.
+      const already = await env.RESULTS.get(`paid:${token}`);
+      if (already !== "1") {
+        await env.RESULTS.put(`paid:${token}`, "1", { expirationTtl: RESULT_TTL });
+        console.log(`[stripe] pagamento confirmado para token ${token.slice(0, 8)}…`);
+        await bump(env, "payment_completed");
+      }
     }
   }
   return json({ received: true });
 }
 
 // ── Alerta de orçamento (cron + tempo real) ──────────────────────
-// Dispara no máximo UMA vez por dia por nível (80% e 100%), para não spammar.
-// Chamado pelo cron (a cada 6h) e pela própria requisição que cruza o limite.
 async function fireBudgetAlertIfNeeded(env: Env, day: string, used: number, limit: number) {
   const pct = Math.round((used / limit) * 100);
   if (pct < 80 || !env.ALERT_WEBHOOK_URL) return;
@@ -385,39 +463,40 @@ async function checkBudgetAndAlert(env: Env) {
 // ── Handlers de API ──────────────────────────────────────────────
 async function handlePreview(request: Request, env: Env) {
   if (!env.OPENAI_API_KEY) {
-    return json({ error: "OPENAI_API_KEY não configurada no Worker." }, 500);
+    return json({ error: "Não conseguimos analisar seu currículo agora. Tente novamente em instantes." }, 500);
   }
 
   let body: any;
   try {
     body = await request.json();
   } catch {
-    return json({ error: "JSON inválido." }, 400);
+    return json({ error: "Requisição inválida." }, 400);
   }
 
   const cv = String(body?.cv || "").trim();
   const job = String(body?.job || "").trim();
 
-  if (cv.length < 80 || job.length < 80) {
-    return json({ error: "Cole um currículo e uma descrição de vaga completos." }, 400);
+  if (cv.length < 40) {
+    return json({ error: "Não conseguimos ler o texto do currículo. Se o PDF for escaneado, cole o texto manualmente." }, 400);
   }
-
-  // Limite simples para evitar abuso acidental e prompts gigantes.
+  if (job.length < 30) {
+    return json({ error: "Cole a descrição da vaga completa." }, 400);
+  }
   if (cv.length > 18000 || job.length > 12000) {
-    return json({ error: "Texto muito grande para esta versão do MVP." }, 413);
+    return json({ error: "Texto muito grande para esta versão." }, 413);
   }
 
   // Anti-bot: exige Turnstile válido QUANDO o token vem preenchido.
   // Degradação graciosa: se o captcha não carregou no navegador do usuário
   // (extensão/antivírus interceptando challenges.cloudflare.com), o token vem
   // vazio e a análise é liberada mesmo assim — os rate limits por IP + teto
-  // diário seguram o custo. (Revisitar se houver abuso em escala.)
+  // diário seguram o custo.
   const turnstileToken = String(body?.turnstile || "");
   if (turnstileToken && !(await verifyTurnstile(env, turnstileToken, clientIp(request)))) {
     return json({ error: "Verificação anti-bot falhou. Recarregue e tente novamente." }, 400);
   }
 
-  await bump(env, "analyze"); // etapa 2 do funil: análise válida iniciada
+  await bump(env, "analysis_started");
 
   try {
     const now = new Date();
@@ -425,7 +504,6 @@ async function handlePreview(request: Request, env: Env) {
     const hour = now.toISOString().slice(0, 13);
 
     // 1) Teto global diário: limita o CUSTO TOTAL mesmo sob ataque em massa.
-    //    Alerta em tempo real quando a requisição cruza 80%/100% do teto.
     const dailyBudget = parseNum(env.DAILY_PREVIEW_BUDGET) || 100;
     const budgetCount = await checkAndIncrement(env, `budget:${day}`, dailyBudget, 90000);
     if (budgetCount === null) {
@@ -447,27 +525,33 @@ async function handlePreview(request: Request, env: Env) {
       : await callOpenAI(env, cv, job);
 
     if (!cached) {
-      await env.RESULTS.put(`cache:${hash}`, JSON.stringify(premium), { expirationTtl: 7200 });
+      await env.RESULTS.put(`cache:${hash}`, JSON.stringify(premium), { expirationTtl: 86400 });
     }
 
     const token = randomToken();
+    await env.RESULTS.put(`result:${token}`, JSON.stringify(premium), { expirationTtl: RESULT_TTL });
 
-    // Premium fica server-side no KV por 2h.
-    await env.RESULTS.put(
-      `result:${token}`,
-      JSON.stringify(premium),
-      { expirationTtl: 7200 }
-    );
+    await bump(env, "analysis_completed");
+
+    // Diagnóstico grátis: score + vaga compreendida + pontos fortes + 2
+    // descobertas + títulos dos insights bloqueados (a curiosidade do paywall).
+    const preview = {
+      score: premium.score,
+      score_explanation: premium.score_explanation,
+      requirements: premium.requirements,
+      strengths: premium.strengths,
+      attention: premium.attention.slice(0, 2),
+      locked_insights: premium.locked_insights,
+      counts: {
+        attention: premium.attention.length,
+        locked: premium.locked_insights.length
+      }
+    };
 
     return json({
       token,
-      preview: {
-        score: premium.score,
-        matched: premium.matched.slice(0, 4),
-        gap_count: premium.missing.length
-      },
-      price: env.PRICE_BRL || "9,90",
-      pix_key: env.PIX_KEY || ""
+      preview,
+      price: env.PRICE_BRL || "9,90"
     });
   } catch (err) {
     console.error(err);
@@ -482,63 +566,10 @@ async function handlePreview(request: Request, env: Env) {
       // melhor esforço
     }
     if (err instanceof Error && err.name === "TimeoutError") {
-      return json({ error: "A análise demorou demais (limite de 28s). Tente novamente." }, 504);
+      return json({ error: "Não conseguimos analisar seu currículo agora. Tente novamente em instantes." }, 504);
     }
-    return json({ error: "A análise por IA falhou. Tente novamente." }, 503);
+    return json({ error: "Não conseguimos analisar seu currículo agora. Tente novamente em instantes." }, 503);
   }
-}
-
-// ── Captura de lead (email) ─────────────────────────────────────
-// Guarda o email de quem analisou mas não pagou, para follow-up do dono.
-// Os emails ficam SÓ no KV (chave `lead:<email>`, valor = metadados) e nunca
-// são expostos por nenhum endpoint — o dono os lê via `wrangler kv key list`.
-const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
-
-async function handleLead(request: Request, env: Env) {
-  let body: any;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ error: "JSON inválido." }, 400);
-  }
-
-  const email = String(body?.email || "").trim().toLowerCase();
-  if (!EMAIL_RE.test(email) || email.length > 254) {
-    return json({ error: "Email inválido." }, 400);
-  }
-
-  // Rate limit por IP/hora: evita coleta de emails em massa.
-  const hour = new Date().toISOString().slice(0, 13);
-  if ((await checkAndIncrement(env, `rl-lead:${clientIp(request)}:${hour}`, 5, 3700)) === null) {
-    return json({ error: "Muitas tentativas. Aguarde um pouco." }, 429);
-  }
-
-  // Dedupe: mesmo email não é gravado duas vezes.
-  const key = `lead:${email}`;
-  if (await env.RESULTS.get(key)) {
-    return json({ ok: true, already: true });
-  }
-
-  // Associa (melhor esforço) token/score/gap_count para segmentação futura.
-  const token = String(body?.token || "");
-  const meta: Record<string, unknown> = { created_at: new Date().toISOString() };
-  if (/^[0-9a-f]{48}$/.test(token)) {
-    try {
-      const raw = await env.RESULTS.get(`result:${token}`);
-      if (raw) {
-        const premium = JSON.parse(raw) as PremiumResult;
-        meta.token = token;
-        meta.score = premium.score;
-        meta.gap_count = premium.missing.length;
-      }
-    } catch {
-      // melhor esforço
-    }
-  }
-
-  await env.RESULTS.put(key, JSON.stringify(meta));
-  await bump(env, "lead"); // etapa do funil: email capturado
-  return json({ ok: true });
 }
 
 async function handleUnlock(request: Request, env: Env) {
@@ -546,7 +577,7 @@ async function handleUnlock(request: Request, env: Env) {
   try {
     body = await request.json();
   } catch {
-    return json({ error: "JSON inválido." }, 400);
+    return json({ error: "Requisição inválida." }, 400);
   }
 
   const token = String(body?.token || "");
@@ -557,7 +588,6 @@ async function handleUnlock(request: Request, env: Env) {
   }
 
   // Rate limit só para tentativas COM código (vetor de brute-force).
-  // Polls pós-pagamento enviam código vazio e não devem ser limitadas.
   if (code) {
     const now = new Date();
     const hour = now.toISOString().slice(0, 13);
@@ -567,7 +597,7 @@ async function handleUnlock(request: Request, env: Env) {
   }
 
   if (!/^[0-9a-f]{48}$/.test(token)) {
-    return json({ error: "Token inválido." }, 400);
+    return json({ error: "Sessão inválida." }, 400);
   }
 
   // Libera com código manual OU com pagamento Stripe confirmado (código vazio).
@@ -578,10 +608,30 @@ async function handleUnlock(request: Request, env: Env) {
 
   const raw = await env.RESULTS.get(`result:${token}`);
   if (!raw) {
-    return json({ error: "Resultado expirado. Gere uma nova análise." }, 404);
+    return json({ error: "Sua análise expirou. Gere uma nova gratuitamente." }, 404);
   }
 
   return json({ ok: true, premium: JSON.parse(raw) });
+}
+
+// Eventos de funil vindos do cliente (sem dados pessoais — só contadores).
+async function handleEvent(request: Request, env: Env) {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Requisição inválida." }, 400);
+  }
+  const stage = String(body?.stage || "");
+  if (!(FUNNEL_STAGES as readonly string[]).includes(stage)) {
+    return json({ error: "Evento desconhecido." }, 400);
+  }
+  const hour = new Date().toISOString().slice(0, 13);
+  if ((await checkAndIncrement(env, `rl-ev:${clientIp(request)}:${hour}`, 60, 3700)) === null) {
+    return json({ ok: true }); // silencioso sob rate limit
+  }
+  await bump(env, stage as FunnelStage);
+  return json({ ok: true });
 }
 
 async function handleStatus(env: Env) {
@@ -607,18 +657,33 @@ async function handleStats(env: Env) {
   }
   // Taxas de conversão do funil (evitando divisão por zero).
   const conv: Record<string, string> = {};
-  if (total.view > 0) conv.analyze = `${Math.round((total.analyze / total.view) * 100)}%`;
-  if (total.analyze > 0) conv.lead = `${Math.round((total.lead / total.analyze) * 100)}%`;
-  if (total.lead > 0) conv.checkout = `${Math.round((total.checkout / total.lead) * 100)}%`;
-  if (total.checkout > 0) conv.paid = `${Math.round((total.paid / total.checkout) * 100)}%`;
+  const rate = (from: number, to: number) => (from > 0 ? `${Math.round((to / from) * 100)}%` : null);
+  const t = total;
+  const c1 = rate(t.landing_view, t.analysis_started);
+  const c2 = rate(t.analysis_started, t.analysis_completed);
+  const c3 = rate(t.analysis_completed, t.result_viewed);
+  const c4 = rate(t.result_viewed, t.locked_insights_viewed);
+  const c5 = rate(t.locked_insights_viewed, t.unlock_clicked);
+  const c6 = rate(t.unlock_clicked, t.checkout_started);
+  const c7 = rate(t.checkout_started, t.payment_completed);
+  const c8 = rate(t.payment_completed, t.full_report_viewed);
+  const totalConv = rate(t.landing_view, t.payment_completed);
+  if (c1) conv["landing→analysis"] = c1;
+  if (c2) conv["analysis→completed"] = c2;
+  if (c3) conv["completed→result"] = c3;
+  if (c4) conv["result→insights"] = c4;
+  if (c5) conv["insights→unlock"] = c5;
+  if (c6) conv["unlock→checkout"] = c6;
+  if (c7) conv["checkout→paid"] = c7;
+  if (c8) conv["paid→report"] = c8;
+  if (totalConv) conv["landing→paid"] = totalConv;
   return json({ day, today, total, conv });
 }
 
 async function handleConfig(env: Env) {
   return json({
     turnstile_sitekey: env.TURNSTILE_SITEKEY || "",
-    price: env.PRICE_BRL || "9,90",
-    pix_key: env.PIX_KEY || ""
+    price: env.PRICE_BRL || "9,90"
   });
 }
 
@@ -628,16 +693,13 @@ export default {
 
     // HTTPS obrigatório: redireciona http → https (algumas zonas Cloudflare
     // não têm "Always Use HTTPS" ativo; o worker garante em qualquer domínio).
-    if (url.protocol === "http:") {
+    // localhost fica de fora (dev roda em http puro).
+    if (url.protocol === "http:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
       return Response.redirect(`https://${url.host}${url.pathname}${url.search}`, 301);
     }
 
     if (request.method === "POST" && url.pathname === "/api/preview") {
       return handlePreview(request, env);
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/lead") {
-      return handleLead(request, env);
     }
 
     if (request.method === "POST" && url.pathname === "/api/unlock") {
@@ -650,6 +712,10 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/api/stripe-webhook") {
       return handleStripeWebhook(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/event") {
+      return handleEvent(request, env);
     }
 
     if (request.method === "GET" && url.pathname === "/api/status") {
@@ -665,7 +731,7 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/") {
-      await bump(env, "view"); // etapa 1 do funil: página carregada
+      await bump(env, "landing_view");
     }
 
     const asset = await env.ASSETS.fetch(request);
