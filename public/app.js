@@ -378,7 +378,9 @@ function renderResultFromState(pending) {
 }
 
 async function pollUnlock() {
-  for (let i = 0; i < 20; i++) {
+  // 90s de polling (45 × 2s): o flag paid: no KV pode levar até 60s para
+  // propagar até o edge do usuário (eventual consistency do Cloudflare KV).
+  for (let i = 0; i < 45; i++) {
     try {
       const response = await fetch("/api/unlock", {
         method: "POST",
@@ -395,6 +397,7 @@ async function pollUnlock() {
         sessionStorage.setItem("mv-token", resultToken); // refresh-safe
         renderPremium(data.premium);
         $("status").textContent = "";
+        $("retryUnlock").classList.add("hidden");
         return;
       }
       if (response.status === 404) {
@@ -403,6 +406,7 @@ async function pollUnlock() {
       }
       if (response.status !== 403) {
         $("status").textContent = "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
+        $("retryUnlock").classList.remove("hidden");
         return;
       }
     } catch {
@@ -410,8 +414,17 @@ async function pollUnlock() {
     }
     await new Promise(r => setTimeout(r, 2000));
   }
-  $("status").textContent = "Pagamento ainda não confirmado. Tente novamente em instantes.";
+  // Pagamento pode ter sido confirmado (webhook) mas o flag ainda não
+  // propagou no KV — dá o controle ao usuário em vez de desistir.
+  $("status").textContent = "Ainda não conseguimos confirmar seu pagamento. Se você já pagou, clique abaixo para liberar sua análise.";
+  $("retryUnlock").classList.remove("hidden");
 }
+
+$("retryUnlock").addEventListener("click", () => {
+  $("retryUnlock").classList.add("hidden");
+  $("status").textContent = "Liberando sua análise...";
+  pollUnlock();
+});
 
 $("pay").addEventListener("click", async () => {
   const button = $("pay");
@@ -639,6 +652,15 @@ $("scoreTip").addEventListener("click", () => {
 
 initTurnstile();
 handleCheckoutReturn();
+
+// Auto-recuperação: quem pagou mas o desbloqueio não propagou a tempo volta
+// para a página e o relatório é liberado sozinho (mv-pending guarda o token).
+const pendingState = restorePending();
+if (pendingState && !new URLSearchParams(location.search).get("checkout")) {
+  resultToken = pendingState.token;
+  renderResultFromState(pendingState);
+  pollUnlock();
+}
 
 // Refresh-safe: quem já pagou recupera o relatório ao voltar.
 const savedToken = sessionStorage.getItem("mv-token");
