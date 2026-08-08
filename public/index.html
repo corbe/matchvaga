@@ -88,35 +88,38 @@
       <p id="scoreExplanation" class="score-explanation"></p>
 
       <div class="section-block">
-        <h3>O que identificamos nesta vaga</h3>
-        <div id="requirements"></div>
-      </div>
-
-      <div class="section-block">
         <h3>O que seu currículo demonstra bem</h3>
         <ul id="strengthsList" class="check-list"></ul>
       </div>
 
       <div class="section-block">
-        <h3>Um ponto que merece atenção</h3>
+        <h3 id="attentionHeading">Encontramos 0 pontos que merecem atenção</h3>
         <div id="attentionFirst"></div>
-      </div>
-      <div class="section-block" id="attentionSecondBlock">
-        <h3>Segunda descoberta</h3>
-        <div id="attentionSecond"></div>
+        <ul id="attentionLocked" class="locked-titles"></ul>
       </div>
 
       <!-- PAYWALL CONTEXTUAL -->
       <div class="paywall hidden" id="paywall">
-        <h2 id="paywallTitle">Encontramos mais 5 pontos nesta análise</h2>
+        <h2 id="paywallTitle">Sua análise ainda tem 0 pontos</h2>
         <ul class="locked-list" id="lockedInsights"></ul>
+        <div class="kit">
+          <h3>Na análise completa você recebe</h3>
+          <ul>
+            <li>✓ evidência de cada requisito</li>
+            <li>✓ recomendações específicas</li>
+            <li>✓ sugestões de reescrita</li>
+            <li>✓ currículo adaptado à vaga</li>
+            <li>✓ mensagem para recrutador</li>
+            <li>✓ preparação para entrevista</li>
+          </ul>
+        </div>
         <button id="pay" class="cta cta-pay" type="button">Ver análise completa</button>
         <button id="retryUnlock" class="cta hidden" type="button" style="margin-top:10px">Liberar minha análise (já paguei)</button>
         <p class="once">R$ 9,90 · pagamento único</p>
         <p id="payError" class="error" role="alert"></p>
       </div>
 
-      <!-- RELATÓRIO COMPLETO -->
+      <!-- RELATÓRIO COMPLETO (PAGO = SOLUÇÃO) -->
       <section id="premium" class="premium hidden">
         <h2 class="premium-title">Análise completa</h2>
 
@@ -137,19 +140,29 @@
         </div>
 
         <div class="card">
-          <h3>Melhorias</h3>
+          <h3>Todos os pontos de atenção</h3>
           <div id="pAttention"></div>
         </div>
 
         <div class="card">
-          <h3>Reescrita de trechos</h3>
+          <h3>Reescritas seguras <span class="badge">pode copiar</span></h3>
           <div id="pRewrites"></div>
+        </div>
+
+        <div class="card">
+          <h3>Oportunidades condicionais <span class="badge badge-amber">se você possui a experiência</span></h3>
+          <ul id="pRecommendations" class="rec-list"></ul>
         </div>
 
         <div class="card">
           <h3>Currículo otimizado para a vaga</h3>
           <pre id="pOptimized"></pre>
           <p class="note">Otimizar ≠ inventar: nada foi adicionado além do que já está no seu currículo.</p>
+        </div>
+
+        <div class="card">
+          <h3>Palavras-chave relevantes</h3>
+          <div id="pKeywords" class="chips"></div>
         </div>
 
         <div class="card">

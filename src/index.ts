@@ -16,7 +16,14 @@ interface Env {
 }
 
 type Strength = { requirement: string; explanation: string };
-type Attention = { requirement: string; what_we_found: string; in_your_cv: string; what_to_do: string };
+type Attention = {
+  requirement: string;
+  what_we_found: string;   // o que a vaga pede
+  in_your_cv: string;      // o que encontramos (ou não) no currículo
+  interpretation: string;  // não significa que não possui
+  why: string;             // por que merece atenção
+  what_to_do: string;      // recomendação condicional / ação honesta
+};
 type Rewrite = { original: string; suggestion: string; why: string };
 
 type PremiumResult = {
@@ -26,8 +33,9 @@ type PremiumResult = {
   table: { requirement: string; situation: string; evidence: string }[];
   strengths: Strength[];
   attention: Attention[];
-  locked_insights: string[];
   rewrites: Rewrite[];
+  recommendations: string[];
+  keywords: string[];
   optimized_cv: string;
   recruiter_message: string;
   interview_questions: string[];
@@ -121,6 +129,7 @@ const FUNNEL_STAGES = [
   "job_description_added",
   "analysis_completed",
   "result_viewed",
+  "free_insight_viewed",
   "locked_insights_viewed",
   "unlock_clicked",
   "checkout_started",
@@ -206,7 +215,7 @@ async function compactRetry(env: Env, input: string): Promise<Partial<PremiumRes
           role: "user",
           content:
             input +
-            "\n\nIMPORTANTE: sua resposta anterior foi inválida ou incompleta. Responda APENAS com JSON válido, COMPACTO e COMPLETO, mantendo TODAS as chaves do formato: score, score_explanation, requirements, table, strengths, attention, locked_insights, rewrites, optimized_cv (máximo 600 caracteres), recruiter_message (máximo 250 caracteres), interview_questions (2-3 itens). Total máximo 1600 caracteres."
+            "\n\nIMPORTANTE: sua resposta anterior foi inválida ou incompleta. Responda APENAS com JSON válido, COMPACTO e COMPLETO, mantendo TODAS as chaves do formato: score, score_explanation, requirements, table, strengths, attention, rewrites, recommendations, keywords, optimized_cv (máximo 500 caracteres), recruiter_message (máximo 200 caracteres), interview_questions (2-3 itens). Total máximo 1500 caracteres."
         }
       ],
       response_format: { type: "json_object" },
@@ -249,34 +258,45 @@ REGRAS DE INTEGRIDADE (obrigatórias):
 - "Não encontrado no currículo" NÃO significa "o candidato não possui": quando um requisito da vaga não aparecer no currículo, diga que NÃO FOI ENCONTRADO no currículo, nunca que o candidato não tem a experiência.
 - Não transforme conhecimento teórico em experiência profissional.
 - Não ensine o candidato a mentir.
-- O currículo otimizado pode melhorar clareza, reordenar, destacar e usar a terminologia da vaga QUANDO VERDADEIRA — mas APENAS com fatos existentes no currículo.
-- Quando faltar informação: "Se você realmente possui experiência com X, considere evidenciá-la melhor no currículo."
+- O currículo otimizado pode reorganizar, resumir, melhorar clareza, destacar e usar a terminologia da vaga QUANDO VERDADEIRA — mas APENAS com fatos existentes no currículo.
+
+REESCRITA SEGURA (regra absoluta):
+- rewrites são reformulações que PODEM ser copiadas. Devem conter SOMENTE fatos suportados pelo currículo.
+- NUNCA adicione TDD, BDD, code reviews, mentoria, pair programming, CI/CD ou QUALQUER prática/tecnologia que não esteja comprovada no currículo.
+- Se o currículo não menciona testes, não escreva "promoveu boas práticas de testes". Se não menciona code reviews, não escreva "conduziu code reviews".
+- "Adicionar 'se verdadeiro' depois de uma frase inventada" TAMBÉM é proibido — isso continua sendo invenção.
+
+RECOMENDAÇÕES CONDICIONAIS (oportunidades):
+- recommendations são frases condicionais para gaps: "Se você realmente possui experiência com X, considere evidenciá-la no currículo com exemplos concretos."
+- NUNCA coloque essas experiências dentro de rewrites ou do optimized_cv.
 
 FORMATO DE RESPOSTA (JSON válido, sem markdown, EXATAMENTE estas chaves):
 {
-  "score": <inteiro 0-100 — grau de alinhamento entre currículo e requisitos; NÃO é chance de contratação>,
+  "score": <inteiro 0-100 — grau de alinhamento; NÃO é chance de contratação>,
   "score_explanation": "<1-2 frases>",
   "requirements": [{"category":"<ex.: Backend>","items":["<requisitos da vaga>"]}],
   "table": [{"requirement":"<requisito>","situation":"Forte|Compatível|Melhorar|Gap","evidence":"Encontrado claramente|Encontrado|Pouco evidenciado|Não encontrado"}],
-  "strengths": [{"requirement":"<requisito>","explanation":"<por que está bem demonstrado, citando o currículo>"}],
-  "attention": [{"requirement":"<requisito que merece atenção>","what_we_found":"<o que a vaga pede>","in_your_cv":"<o que encontramos (ou não) no currículo, sem afirmar que o candidato não sabe>","what_to_do":"<ação honesta>"}],
-  "locked_insights": ["<título curto de descoberta adicional, ex.: 'Experiência com Kubernetes pode estar sub-representada'>"],
-  "rewrites": [{"original":"<trecho REAL do currículo>","suggestion":"<versão melhorada SEM inventar>","why":"<explicação curta>"}],
-  "optimized_cv": "<currículo adaptado à vaga, SEM inventar nada>",
-  "recruiter_message": "<mensagem curta e honesta para o recrutador>",
-  "interview_questions": ["<perguntas prováveis para esta vaga e este currículo>"]
+  "strengths": [{"requirement":"<requisito>","explanation":"<frase curta>"}],
+  "attention": [{"requirement":"<requisito que merece atenção>","what_we_found":"<o que a vaga pede>","in_your_cv":"<o que encontramos (ou não) no currículo>","interpretation":"<isso NÃO significa que o candidato não possui; significa que não está evidente>","why":"<por que merece atenção>","what_to_do":"<recomendação condicional honesta>"}],
+  "rewrites": [{"original":"<trecho REAL do currículo>","suggestion":"<reformulação segura, SEM adicionar fatos>","why":"<explicação curta>"}],
+  "recommendations": ["<frase condicional para cada gap: Se você realmente possui experiência com X, considere evidenciá-la...>"],
+  "keywords": ["<palavras-chave JUSTIFICADAS pela experiência real>"],
+  "optimized_cv": "<currículo adaptado à vaga, SOMENTE com fatos existentes>",
+  "recruiter_message": "<mensagem curta e honesta, somente fatos do currículo>",
+  "interview_questions": ["<perguntas prováveis; é permitido perguntar sobre gaps, ex.: 'Como você utiliza TDD/BDD?'>"]
 }
 
 REGRAS ADICIONAIS:
 - requirements: agrupe os requisitos da vaga em 2-4 categorias.
-- table: cubra os requisitos principais (5-6 linhas), com evidência honesta.
-- strengths: no máximo 3 itens.
-- attention: no máximo 3 itens (os 2 primeiros serão exibidos gratuitamente).
-- locked_insights: 4 títulos curtos e específicos DESTA análise (o que o relatório completo revela).
-- rewrites: no máximo 2 trechos reais do currículo com sugestão honesta de melhoria.
+- table: cubra os requisitos principais (5-6 linhas).
+- strengths: no máximo 3 itens, com frase curta.
+- attention: no máximo 5 itens, ORDENADOS por relevância (o 1º será mostrado gratuitamente em detalhe).
+- rewrites: no máximo 2 trechos reais, com sugestão SEGURA (sem fatos novos).
+- recommendations: 2-3 frases condicionais (uma por gap principal).
+- keywords: no máximo 8.
 - optimized_cv: máximo 1200 caracteres.
 - interview_questions: no máximo 4.
-CRÍTICO: a resposta JSON inteira deve ter no máximo 2000 caracteres. Se o
+CRÍTICO: a resposta JSON inteira deve ter no máximo 2200 caracteres. Se o
 currículo for extenso, priorize o essencial. NUNCA deixe o JSON incompleto.
 
 CURRÍCULO:
@@ -345,6 +365,7 @@ ${jobTrim}
     if (retried) console.error("Usando retry compacto após JSON inválido na 1ª tentativa");
   }
   const premium = normalizePremium(parsed);
+  applyAntiInvention(premium, cvTrim);
 
   // Completude: se a DeepSeek fechar o JSON no max_tokens (JSON válido mas sem
   // os campos longos), roda o retry compacto que EXIGE todas as chaves.
@@ -352,12 +373,43 @@ ${jobTrim}
     console.error("Análise incompleta na 1ª tentativa — retentando compacto");
     try {
       const retryPremium = normalizePremium(await compactRetry(env, input));
+      applyAntiInvention(retryPremium, cvTrim);
       if (isCompletePremium(retryPremium)) return retryPremium;
     } catch {
       // aceita a melhor versão disponível
     }
   }
   return premium;
+}
+
+// ── Validação anti-alucinação (2ª camada, não depende só do prompt) ──
+// Remove de reescritas/currículo/mensagem qualquer frase que AFIRME experiência
+// em requisito-gap que não aparece no currículo. Frases removidas viram
+// recomendações condicionais (que já existem no campo recommendations).
+function applyAntiInvention(p: PremiumResult, cv: string): void {
+  const cvLower = cv.toLowerCase();
+  const banned = (p.table || [])
+    .filter(t => /melhorar|gap/i.test(t.situation))
+    .map(t => t.requirement)
+    .filter((b: string) => b && b.length > 3 && !cvLower.includes(b.toLowerCase()));
+  if (!banned.length) return;
+
+  const sanitize = (text: string): string => {
+    if (!text) return text;
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    const kept = sentences.filter(s => {
+      const lower = s.toLowerCase();
+      return !banned.some(b => lower.includes(b.toLowerCase()));
+    });
+    return kept.join(" ").trim();
+  };
+
+  p.rewrites = (p.rewrites || []).map(r => ({
+    ...r,
+    suggestion: sanitize(r.suggestion) || r.original
+  }));
+  p.optimized_cv = sanitize(p.optimized_cv);
+  p.recruiter_message = sanitize(p.recruiter_message);
 }
 
 // Normaliza o JSON da IA (o json_object da DeepSeek não garante o schema).
@@ -383,18 +435,21 @@ function normalizePremium(parsed: Partial<PremiumResult>): PremiumResult {
       requirement: str(s!.requirement, "Requisito"),
       explanation: str(s!.explanation, "Bem demonstrado no currículo.")
     })),
-    attention: arr(parsed.attention).map(obj).filter(Boolean).slice(0, 3).map(a => ({
+    attention: arr(parsed.attention).map(obj).filter(Boolean).slice(0, 5).map(a => ({
       requirement: str(a!.requirement, "Requisito"),
       what_we_found: str(a!.what_we_found, "A vaga menciona este requisito."),
       in_your_cv: str(a!.in_your_cv, "Não encontramos claramente no currículo."),
+      interpretation: str(a!.interpretation, "Isso não significa que você não possui a experiência — significa apenas que ela não está evidente no currículo enviado."),
+      why: str(a!.why, "A vaga dá importância a este requisito."),
       what_to_do: str(a!.what_to_do, "Se você realmente possui esta experiência, considere evidenciá-la melhor no currículo.")
     })),
-    locked_insights: arr(parsed.locked_insights).filter(i => typeof i === "string").slice(0, 4) as string[],
     rewrites: arr(parsed.rewrites).map(obj).filter(Boolean).slice(0, 2).map(r => ({
       original: str(r!.original, ""),
       suggestion: str(r!.suggestion, ""),
       why: str(r!.why, "")
     })),
+    recommendations: arr(parsed.recommendations).filter(r => typeof r === "string").slice(0, 4) as string[],
+    keywords: arr(parsed.keywords).filter(k => typeof k === "string").slice(0, 8) as string[],
     optimized_cv: str(parsed.optimized_cv, ""),
     recruiter_message: str(parsed.recruiter_message, ""),
     interview_questions: arr(parsed.interview_questions).filter(q => typeof q === "string").slice(0, 4) as string[]
@@ -683,19 +738,17 @@ async function handlePreview(request: Request, env: Env) {
 
     await bump(env, "analysis_completed");
 
-    // Diagnóstico grátis: score + vaga compreendida + pontos fortes + 2
-    // descobertas + títulos dos insights bloqueados (a curiosidade do paywall).
+    // GRÁTIS = descoberta: score, resumo curto, 3 pontos fortes, contagem e
+    // títulos dos pontos de atenção + UM gap explicado em detalhe. Nada de
+    // solução (reescritas/currículo/mensagem/perguntas ficam para o pago).
     const preview = {
       score: premium.score,
       score_explanation: premium.score_explanation,
-      requirements: premium.requirements,
       strengths: premium.strengths,
-      attention: premium.attention.slice(0, 2),
-      locked_insights: premium.locked_insights,
-      counts: {
-        attention: premium.attention.length,
-        locked: premium.locked_insights.length
-      }
+      attention_first: premium.attention[0] || null,
+      attention_locked: premium.attention.slice(1).map(a => a.requirement),
+      attention_count: premium.attention.length,
+      price: env.PRICE_BRL || "9,90"
     };
 
     return json({

@@ -244,33 +244,11 @@ async function runAnalysis() {
 
 function renderResult(data) {
   const p = data.preview;
-  const locked = p.counts.locked || p.locked_insights.length;
 
   $("score").textContent = p.score;
   $("scoreExplanation").textContent = p.score_explanation || "";
 
-  // O que identificamos nesta vaga
-  clearEl("requirements");
-  (p.requirements || []).forEach(req => {
-    const block = document.createElement("div");
-    block.className = "req-cat";
-    const title = document.createElement("div");
-    title.className = "req-cat-title";
-    title.textContent = req.category;
-    block.appendChild(title);
-    const chips = document.createElement("div");
-    chips.className = "chips";
-    (req.items || []).forEach(it => {
-      const c = document.createElement("span");
-      c.className = "chip";
-      c.textContent = it;
-      chips.appendChild(c);
-    });
-    block.appendChild(chips);
-    $("requirements").appendChild(block);
-  });
-
-  // O que seu currículo demonstra bem
+  // O que seu currículo demonstra bem (máx 3, todos grátis — prova competência)
   clearEl("strengthsList");
   (p.strengths || []).forEach(s => {
     const li = document.createElement("li");
@@ -278,24 +256,26 @@ function renderResult(data) {
     $("strengthsList").appendChild(li);
   });
 
-  // Um ponto que merece atenção + Segunda descoberta
-  const attention = p.attention || [];
+  // GRÁTIS = descoberta: contagem + UM gap detalhado + títulos bloqueados.
+  const first = p.attention_first;
+  const locked = p.attention_locked || [];
+  const total = p.attention_count || locked.length + (first ? 1 : 0);
+  $("attentionHeading").textContent = `Encontramos ${total} ponto${total > 1 ? "s" : ""} que merece${total > 1 ? "m" : ""} atenção`;
   clearEl("attentionFirst");
-  if (attention[0]) $("attentionFirst").appendChild(attentionCard(attention[0]));
-  clearEl("attentionSecond");
-  if (attention[1]) {
-    $("attentionSecond").appendChild(attentionCard(attention[1]));
-    $("attentionSecondBlock").style.display = "";
-  } else {
-    $("attentionSecondBlock").style.display = "none";
-  }
+  if (first) $("attentionFirst").appendChild(attentionCard(first, true));
+  clearEl("attentionLocked");
+  locked.forEach(t => {
+    const li = document.createElement("li");
+    li.innerHTML = `🔒 <strong>${esc(t)}</strong>`;
+    $("attentionLocked").appendChild(li);
+  });
 
   // Paywall contextual
-  $("paywallTitle").textContent = `Encontramos mais ${locked} pontos nesta análise`;
+  $("paywallTitle").textContent = `Sua análise ainda tem ${locked.length} ponto${locked.length !== 1 ? "s" : ""}`;
   clearEl("lockedInsights");
-  (p.locked_insights || []).forEach(t => {
+  locked.forEach(t => {
     const li = document.createElement("li");
-    li.innerHTML = `🔒 ${esc(t)}`;
+    li.innerHTML = `🔒 <strong>${esc(t)}</strong>`;
     $("lockedInsights").appendChild(li);
   });
 
@@ -306,19 +286,23 @@ function renderResult(data) {
   sessionStorage.removeItem("mv-token");
   // analysis_completed é contado no servidor (handlePreview), não aqui.
 
+  trackOnView("attentionFirst", "free_insight_viewed");
   trackOnView("paywall", "locked_insights_viewed");
   trackOnView("result", "result_viewed");
 
   $("result").scrollIntoView({ behavior: "smooth" });
 }
 
-function attentionCard(a) {
+function attentionCard(a, free) {
   const div = document.createElement("div");
   div.className = "attention-card";
-  div.innerHTML = `<strong>${esc(a.requirement)}</strong>` +
-    `<div class="attention-part"><span class="lbl">A vaga pede</span> ${esc(a.what_we_found)}</div>` +
+  div.innerHTML = `<strong>⚠ ${esc(a.requirement)}</strong>` +
+    `<div class="attention-part"><span class="lbl">O que a vaga pede</span> ${esc(a.what_we_found)}</div>` +
     `<div class="attention-part"><span class="lbl">No seu currículo</span> ${esc(a.in_your_cv)}</div>` +
-    (a.what_to_do ? `<div class="attention-part what-to-do">${esc(a.what_to_do)}</div>` : "");
+    (free
+      ? (a.interpretation ? `<div class="attention-part interpretation"><span class="lbl">Interpretação</span> ${esc(a.interpretation)}</div>` : "")
+      : (a.why ? `<div class="attention-part"><span class="lbl">Por que merece atenção</span> ${esc(a.why)}</div>` : "") +
+        (a.what_to_do ? `<div class="attention-part what-to-do"><span class="lbl">O que fazer</span> ${esc(a.what_to_do)}</div>` : ""));
   return div;
 }
 
@@ -360,25 +344,6 @@ function handleCheckoutReturn() {
 function renderResultFromState(pending) {
   $("score").textContent = pending.score;
   $("scoreExplanation").textContent = pending.score_explanation || "";
-  clearEl("requirements");
-  (pending.requirements || []).forEach(req => {
-    const block = document.createElement("div");
-    block.className = "req-cat";
-    const title = document.createElement("div");
-    title.className = "req-cat-title";
-    title.textContent = req.category;
-    block.appendChild(title);
-    const chips = document.createElement("div");
-    chips.className = "chips";
-    (req.items || []).forEach(it => {
-      const c = document.createElement("span");
-      c.className = "chip";
-      c.textContent = it;
-      chips.appendChild(c);
-    });
-    block.appendChild(chips);
-    $("requirements").appendChild(block);
-  });
   clearEl("strengthsList");
   (pending.strengths || []).forEach(s => {
     const li = document.createElement("li");
@@ -386,20 +351,22 @@ function renderResultFromState(pending) {
     $("strengthsList").appendChild(li);
   });
   clearEl("attentionFirst");
-  clearEl("attentionSecond");
-  const attention = pending.attention || [];
-  if (attention[0]) $("attentionFirst").appendChild(attentionCard(attention[0]));
-  if (attention[1]) {
-    $("attentionSecond").appendChild(attentionCard(attention[1]));
-    $("attentionSecondBlock").style.display = "";
-  } else {
-    $("attentionSecondBlock").style.display = "none";
-  }
-  $("paywallTitle").textContent = pending.paywall_title || "Encontramos mais pontos nesta análise";
-  clearEl("lockedInsights");
-  (pending.locked_insights || []).forEach(t => {
+  clearEl("attentionLocked");
+  const first = pending.attention_first;
+  const locked = pending.attention_locked || [];
+  const total = pending.attention_count || locked.length + (first ? 1 : 0);
+  $("attentionHeading").textContent = `Encontramos ${total} ponto${total > 1 ? "s" : ""} que merece${total > 1 ? "m" : ""} atenção`;
+  if (first) $("attentionFirst").appendChild(attentionCard(first, true));
+  locked.forEach(t => {
     const li = document.createElement("li");
-    li.innerHTML = `🔒 ${esc(t)}`;
+    li.innerHTML = `🔒 <strong>${esc(t)}</strong>`;
+    $("attentionLocked").appendChild(li);
+  });
+  $("paywallTitle").textContent = pending.paywall_title || "Sua análise ainda tem pontos";
+  clearEl("lockedInsights");
+  locked.forEach(t => {
+    const li = document.createElement("li");
+    li.innerHTML = `🔒 <strong>${esc(t)}</strong>`;
     $("lockedInsights").appendChild(li);
   });
   $("result").classList.remove("hidden");
@@ -521,21 +488,22 @@ $("pay").addEventListener("click", async () => {
       token: resultToken,
       score: $("score").textContent,
       score_explanation: $("scoreExplanation").textContent,
-      requirements: Array.from(document.querySelectorAll("#requirements .req-cat")).map(cat => ({
-        category: cat.querySelector(".req-cat-title").textContent,
-        items: Array.from(cat.querySelectorAll(".chip")).map(c => c.textContent)
-      })),
       strengths: Array.from(document.querySelectorAll("#strengthsList li")).map(li => ({
         requirement: li.querySelector("strong").textContent,
         explanation: li.querySelector(".item-note") ? li.querySelector(".item-note").textContent : ""
       })),
-      attention: Array.from(document.querySelectorAll(".attention-card")).map(card => ({
-        requirement: card.querySelector("strong").textContent,
-        what_we_found: card.querySelector(".attention-part .lbl") ? card.querySelector(".attention-part .lbl").nextSibling.textContent.trim() : "",
-        in_your_cv: "",
-        what_to_do: card.querySelector(".what-to-do") ? card.querySelector(".what-to-do").textContent : ""
-      })),
-      locked_insights: Array.from(document.querySelectorAll("#lockedInsights li")).map(li => li.textContent.replace(/^🔒\s*/, "")),
+      attention_first: (() => {
+        const card = document.querySelector("#attentionFirst .attention-card");
+        if (!card) return null;
+        return {
+          requirement: card.querySelector("strong").textContent.replace(/^⚠\s*/, ""),
+          what_we_found: card.querySelector(".attention-part .lbl") ? card.querySelector(".attention-part .lbl").nextSibling.textContent.trim() : "",
+          in_your_cv: "",
+          interpretation: card.querySelector(".interpretation") ? card.querySelector(".interpretation").textContent : ""
+        };
+      })(),
+      attention_locked: Array.from(document.querySelectorAll("#attentionLocked li strong, #lockedInsights li strong")).map(s => s.textContent),
+      attention_count: Number(($("attentionHeading").textContent.match(/\d+/) || [0])[0]),
       paywall_title: $("paywallTitle").textContent
     }));
 
@@ -590,13 +558,7 @@ function renderPremium(p) {
 
   clearEl("pAttention");
   (p.attention || []).forEach(a => {
-    const div = document.createElement("div");
-    div.className = "improvement";
-    div.innerHTML = `<h4>${esc(a.requirement)}</h4>` +
-      `<div class="attention-part"><span class="lbl">O que encontramos</span> ${esc(a.what_we_found)}</div>` +
-      `<div class="attention-part"><span class="lbl">No seu currículo</span> ${esc(a.in_your_cv)}</div>` +
-      (a.what_to_do ? `<div class="attention-part what-to-do"><span class="lbl">O que fazer</span> ${esc(a.what_to_do)}</div>` : "");
-    $("pAttention").appendChild(div);
+    $("pAttention").appendChild(attentionCard(a, false));
   });
 
   clearEl("pRewrites");
@@ -604,16 +566,32 @@ function renderPremium(p) {
     const div = document.createElement("div");
     div.className = "rewrite";
     div.innerHTML = `<div class="rewrite-orig"><span class="lbl">Original</span>${esc(r.original)}</div>` +
-      `<div class="rewrite-sug"><span class="lbl">Sugestão</span>${esc(r.suggestion)}</div>` +
+      `<div class="rewrite-sug"><span class="lbl">Sugestão segura</span>${esc(r.suggestion)}</div>` +
       (r.why ? `<div class="rewrite-why"><span class="lbl">Por quê</span>${esc(r.why)}</div>` : "");
     $("pRewrites").appendChild(div);
+  });
+
+  clearEl("pRecommendations");
+  (p.recommendations || []).forEach(r => {
+    const li = document.createElement("li");
+    li.innerHTML = `💡 ${esc(r)}`;
+    $("pRecommendations").appendChild(li);
   });
 
   $("pOptimized").textContent = p.optimized_cv || "";
   $("pMessage").textContent = p.recruiter_message || "";
 
+  const kw = $("pKeywords");
+  kw.innerHTML = "";
+  (p.keywords || []).forEach(k => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = k;
+    kw.appendChild(chip);
+  });
+
   // Esconde seções vazias (relatório incompleto nunca mostra buraco feio).
-  ["pOptimized", "pMessage", "pQuestions", "pRewrites", "pAttention", "reqTable"].forEach(id => {
+  ["pOptimized", "pMessage", "pQuestions", "pRewrites", "pAttention", "pRecommendations", "pKeywords", "reqTable"].forEach(id => {
     const el = $(id);
     const card = el ? el.closest(".card") : null;
     if (!card) return;
@@ -621,6 +599,8 @@ function renderPremium(p) {
       : id === "pRewrites" ? !(p.rewrites && p.rewrites.length)
       : id === "pAttention" ? !(p.attention && p.attention.length)
       : id === "pQuestions" ? !(p.interview_questions && p.interview_questions.length)
+      : id === "pRecommendations" ? !(p.recommendations && p.recommendations.length)
+      : id === "pKeywords" ? !(p.keywords && p.keywords.length)
       : !el.textContent.trim();
     card.style.display = empty ? "none" : "";
   });
