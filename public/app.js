@@ -184,25 +184,47 @@ function clearTurnstileStub() {
   }
 }
 
-// Carrega o api.js via fetch + eval no MESMO task da limpeza do stub:
-// JS é single-threaded, então nenhum timer/ferramenta consegue repoluir
-// o protótipo entre a limpeza e a execução do script. Fallback: script tag.
+// Carrega o api.js do Turnstile. Duas camadas de defesa:
+// 1) Tag <script> REAL (caminho normal — o api.js precisa achar a própria tag
+//    no DOM via querySelectorAll para inicializar por completo).
+// 2) Se um stub (extensão/tool que polui window.turnstile) vencer a corrida
+//    contra o load da tag, re-executa o código via eval no MESMO task da
+//    limpeza do stub — nenhum timer consegue repoluir entre o delete e o eval.
+//    (A tag inserida no passo 1 continua no DOM, então o api.js se localiza.)
+const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
 async function loadTurnstileScript() {
-  try {
-    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit");
-    if (!res.ok) throw new Error("fetch api.js falhou");
-    const code = await res.text();
-    clearTurnstileStub();
-    (0, eval)(code);
-  } catch {
-    clearTurnstileStub();
-    await new Promise((resolve, reject) => {
-      const s = document.createElement("script");
-      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-      s.onload = resolve;
-      s.onerror = () => reject(new Error("script do Turnstile falhou ao carregar"));
-      document.head.appendChild(s);
-    });
+  // API real já presente? Nada a fazer.
+  if (window.turnstile && typeof window.turnstile.render === "function") return;
+
+  clearTurnstileStub();
+  // Remove tags injetadas por tools/extensões — o api.js detecta a tag
+  // existente e se recusa a inicializar de novo.
+  document.querySelectorAll('script[src*="challenges.cloudflare.com/turnstile"]').forEach(s => s.remove());
+
+  // Busca o código em paralelo, para o fallback via eval estar pronto.
+  const codePromise = fetch(TURNSTILE_SRC).then(r => r.text()).catch(() => null);
+
+  await new Promise(resolve => {
+    const s = document.createElement("script");
+    s.src = TURNSTILE_SRC;
+    s.async = true;
+    // Mesmo se a tag falhar (ex.: extensão/AV bloqueando o domínio), segue
+    // para o fallback via eval — a tag continua no DOM para o api.js se localizar.
+    s.onload = resolve;
+    s.onerror = resolve;
+    document.head.appendChild(s);
+  });
+
+  if (window.turnstile && typeof window.turnstile.render === "function") return;
+
+  // Stub venceu a corrida: limpa + eval atômico.
+  const code = await codePromise;
+  if (!code) throw new Error("api.js do Turnstile indisponível para fallback");
+  clearTurnstileStub();
+  (0, eval)(code);
+  if (typeof window.turnstile?.render !== "function") {
+    throw new Error("API do Turnstile indisponível no navegador");
   }
 }
 
@@ -224,11 +246,13 @@ async function initTurnstile() {
     });
   } catch (err) {
     console.error("[turnstile]", err);
+    // Degradação graciosa: sem captcha o usuário NÃO fica bloqueado — a
+    // análise funciona igual (protegida por limite de uso por IP).
     const msg = document.createElement("p");
-    msg.className = "error small";
+    msg.className = "hint small";
     msg.textContent =
-      "O captcha não carregou. Desative o bloqueador de anúncios e recarregue (Ctrl+Shift+R). " +
-      "Se continuar, o sitekey pode não permitir este domínio.";
+      "O captcha não carregou (bloqueador ou antivírus?). Sem problema: " +
+      "a análise continua disponível, com limite de uso por IP.";
     $("turnstile").appendChild(msg);
   }
 }

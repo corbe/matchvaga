@@ -81,6 +81,21 @@ O Wrangler exibirá a URL pública `*.workers.dev`.
 
 O conteúdo premium NÃO trafega no `/api/preview`.
 
+## Operação (pontos que travam o funil se esquecidos)
+
+- **Webhook do Stripe é obrigatório**: sem o endpoint `https://matchvaga.matchvaga.workers.dev/api/stripe-webhook`
+  configurado no painel Stripe (eventos `checkout.session.completed` e
+  `checkout.session.async_payment_succeeded`), o pagamento é cobrado mas o
+  usuário NUNCA é desbloqueado. O `STRIPE_WEBHOOK_SECRET` do Worker precisa ser
+  o secret do endpoint. Test mode e live mode têm endpoints/segredos separados.
+- **Turnstile degrada graciosamente**: se o captcha não carregar no navegador
+  do usuário (extensão/antivírus interceptando challenges.cloudflare.com), a
+  análise é liberada mesmo assim — a proteção de custo fica por conta do rate
+  limit por IP + teto diário. O sitekey precisa listar o domínio EXATO do site
+  (subdomínio não é herdado de `matchvaga.workers.dev`).
+- **Stripe em test mode não cobra**: para vender de verdade, `STRIPE_SECRET_KEY`
+  precisa ser `sk_live_...` + webhook endpoint live + whsec do endpoint live.
+
 ## Próxima evolução somente após venda
 
 Trocar o código global por um código/token individual por pagamento e integrar confirmação automática de Pix.

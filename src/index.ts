@@ -38,8 +38,10 @@ const securityHeaders: Record<string, string> = {
   "referrer-policy": "no-referrer",
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
   "content-security-policy":
-    // 'unsafe-eval' apenas para carregar o api.js do Turnstile via fetch+eval
-    // (defesa contra tools que poluem window.turnstile; executa só código da Cloudflare).
+    // 'unsafe-eval' apenas para o fallback do Turnstile: se um stub (extensão)
+    // vencer a corrida contra o load da tag, re-executamos o api.js via eval no
+    // mesmo task da limpeza. O código avaliado é o próprio api.js da Cloudflare,
+    // baixado via HTTPS de challenges.cloudflare.com.
     "default-src 'self'; script-src 'self' https://challenges.cloudflare.com 'unsafe-eval'; " +
     "style-src 'self'; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com; " +
     "base-uri 'self'; form-action 'self'; frame-src https://challenges.cloudflare.com; " +
@@ -405,8 +407,13 @@ async function handlePreview(request: Request, env: Env) {
     return json({ error: "Texto muito grande para esta versão do MVP." }, 413);
   }
 
-  // Anti-bot: só exige Turnstile quando configurado.
-  if (!(await verifyTurnstile(env, String(body?.turnstile || ""), clientIp(request)))) {
+  // Anti-bot: exige Turnstile válido QUANDO o token vem preenchido.
+  // Degradação graciosa: se o captcha não carregou no navegador do usuário
+  // (extensão/antivírus interceptando challenges.cloudflare.com), o token vem
+  // vazio e a análise é liberada mesmo assim — os rate limits por IP + teto
+  // diário seguram o custo. (Revisitar se houver abuso em escala.)
+  const turnstileToken = String(body?.turnstile || "");
+  if (turnstileToken && !(await verifyTurnstile(env, turnstileToken, clientIp(request)))) {
     return json({ error: "Verificação anti-bot falhou. Recarregue e tente novamente." }, 400);
   }
 
