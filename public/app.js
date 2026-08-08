@@ -74,7 +74,16 @@ $("cvFile").addEventListener("change", async e => {
     }
   } catch (err) {
     cvText = "";
-    showStatus(err && err.message ? err.message : "Não foi possível ler o arquivo. Tente outro ou cole o texto.", "error");
+    // Falha de extração → orienta colar o texto (caminho sempre confiável).
+    const msg = err && err.message ? err.message : "Não foi possível ler o arquivo.";
+    showStatus(msg, "error");
+    const toggle = document.querySelector(".paste-toggle");
+    if (toggle) toggle.setAttribute("open", "");
+    const ta = $("cvText");
+    if (ta) {
+      ta.scrollIntoView({ behavior: "smooth", block: "center" });
+      ta.focus();
+    }
   }
 });
 

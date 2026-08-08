@@ -127,11 +127,30 @@
       let inflated;
       try { inflated = await inflate(slice); }
       catch { continue; }
+      // Filtro de lixo binário: fontes embutidas/imagens inflam para binário
+      // (alta proporção de bytes não-ASCII). Streams de conteúdo são ~ASCII.
+      let highBytes = 0;
+      const sample = Math.min(inflated.length, 4096);
+      for (let b = 0; b < sample; b++) if (inflated[b] > 127) highBytes++;
+      if (sample > 0 && highBytes / sample > 0.25) continue;
       const content = extractTextFromStream(inflated);
       if (content.trim().length > 0) results.push(content);
     }
     const joined = results.join("\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
     return joined;
+  }
+
+  // Checagem de legibilidade: rejeita "texto" que na verdade é lixo do PDF
+  // (definições de objeto, fontes decodificadas por acaso etc.).
+  function isReadable(text) {
+    if (!text || text.length < 40) return false;
+    // linhas com internals do PDF não são conteúdo real
+    const cleaned = text.split("\n")
+      .filter(line => !/\/Type|\/Font|\/Length|\/Filter|endobj|^%PDF|xref|stream$|^\/[A-Za-z]/.test(line))
+      .join("\n");
+    if (cleaned.trim().length < 40) return false;
+    const letters = (cleaned.match(/[a-zA-Z0-9À-ÿ]/g) || []).length;
+    return letters / cleaned.length > 0.6;
   }
 
   // ── DOCX ────────────────────────────────────────────────────────
@@ -148,12 +167,17 @@
   window.extractFileText = async function (file) {
     const name = (file.name || "").toLowerCase();
     const buf = await file.arrayBuffer();
+    let text;
     if (name.endsWith(".pdf") || file.type === "application/pdf") {
-      return extractPdfText(buf);
+      text = await extractPdfText(buf);
+    } else if (name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      text = extractDocxText(buf);
+    } else {
+      throw new Error("Formato não suportado. Envie PDF ou DOCX.");
     }
-    if (name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-      return extractDocxText(buf);
+    if (!isReadable(text)) {
+      throw new Error("Não conseguimos extrair o texto deste arquivo (pode ser escaneado ou ter um formato complexo). Cole o texto do currículo abaixo.");
     }
-    throw new Error("Formato não suportado. Envie PDF ou DOCX.");
+    return text;
   };
 })();
