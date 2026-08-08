@@ -626,6 +626,12 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // HTTPS obrigatório: redireciona http → https (algumas zonas Cloudflare
+    // não têm "Always Use HTTPS" ativo; o worker garante em qualquer domínio).
+    if (url.protocol === "http:") {
+      return Response.redirect(`https://${url.host}${url.pathname}${url.search}`, 301);
+    }
+
     if (request.method === "POST" && url.pathname === "/api/preview") {
       return handlePreview(request, env);
     }
