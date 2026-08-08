@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>MatchVaga · Funil</title>
+<style>
+  :root{--ink:#101828;--muted:#667085;--faint:#98a2b3;--line:#e4e7ec;--soft:#f2f4f7;--green:#12b76a;--green-dark:#027a48;--amber:#f79009;--red:#d92d20;--blue:#1570ef}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f9fafb;color:var(--ink);padding:24px 16px 60px}
+  .wrap{max-width:860px;margin:0 auto}
+  h1{font-size:21px}
+  .sub{color:var(--muted);font-size:13.5px;margin-top:4px}
+  .updated{color:var(--faint);font-size:12.5px;margin-top:2px}
+  .period{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .period button{font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border:1px solid var(--line);border-radius:99px;background:#fff;color:var(--muted);cursor:pointer}
+  .period button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:16px}
+  @media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}.kpis .kpi:nth-child(7){grid-column:span 2}}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 10px;text-align:center}
+  .kpi .lbl{font-size:10.5px;font-weight:800;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+  .kpi .val{font-size:21px;font-weight:900;margin-top:3px}
+  .kpi .val small{font-size:11px;font-weight:700;color:var(--muted)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:16px}
+  .card h2{font-size:15px;margin-bottom:14px}
+  .frow{display:flex;align-items:center;gap:12px;padding:8px 0}
+  .frow .name{flex:0 0 150px;font-size:13.5px;font-weight:700}
+  .frow .track{flex:1;height:20px;background:var(--soft);border-radius:6px;overflow:hidden;position:relative}
+  .frow .track i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--green));border-radius:6px}
+  .frow .count{flex:0 0 46px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+  .frow .pct{flex:0 0 44px;text-align:right;font-size:12.5px;font-weight:700;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);text-align:left;padding:8px 10px;border-bottom:2px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid #f0f2f5;font-variant-numeric:tabular-nums}
+  td b{font-weight:800}
+  .drop-bad{color:var(--red);font-weight:800}
+  .drop-ok{color:var(--muted)}
+  .hot{color:var(--green-dark);font-weight:800}
+  .mid{color:var(--amber);font-weight:800}
+  .cold{color:var(--red);font-weight:800}
+  .footer{color:var(--faint);font-size:12px;margin-top:20px;line-height:1.7}
+  .footer code{background:var(--soft);padding:1px 5px;border-radius:4px;font-size:11px}
+  .empty{color:var(--faint);text-align:center;padding:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MatchVaga · Funil de conversão</h1>
+  <p class="sub">Onde os usuários estão abandonando?</p>
+  <p class="updated" id="updated">carregando…</p>
+
+  <div class="period" id="period">
+    <button data-days="1">Hoje</button>
+    <button data-days="7" class="on">7 dias</button>
+    <button data-days="30">30 dias</button>
+    <button data-days="0">Todo período</button>
+  </div>
+
+  <div class="kpis" id="kpis">
+    <div class="kpi"><div class="lbl">Visitas</div><div class="val" id="kVisitas">–</div></div>
+    <div class="kpi"><div class="lbl">Análises</div><div class="val" id="kAnalises">–</div></div>
+    <div class="kpi"><div class="lbl">Unlock</div><div class="val" id="kUnlock">–</div></div>
+    <div class="kpi"><div class="lbl">Checkout</div><div class="val" id="kCheckout">–</div></div>
+    <div class="kpi"><div class="lbl">Vendas</div><div class="val" id="kVendas">–</div></div>
+    <div class="kpi"><div class="lbl">Conversão</div><div class="val" id="kConv">–</div></div>
+    <div class="kpi"><div class="lbl">Receita</div><div class="val" id="kReceita">–</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Funil</h2>
+    <div id="funnel"><div class="empty">carregando…</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Tabela de conversão</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Etapa</th><th>Quantidade</th><th>Conv. anterior</th><th>Conv. total</th><th>Drop p/ próxima</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">
+    Dados do Cloudflare KV (<code>RESULTS</code>): chaves diárias <code>ev:&lt;etapa&gt;:&lt;data&gt;</code> (TTL 31 dias) e totais <code>evt:&lt;etapa&gt;</code> · fonte <code>/api/stats</code> · atualização a cada 30s.<br>
+    <b>Eventos vs. únicos:</b> <code>landing_view</code>, <code>analysis_started/completed</code>, <code>result_viewed</code>, <code>locked_insights_viewed</code>, <code>unlock_clicked</code>, <code>full_report_viewed</code> são <b>contagens de eventos</b> (refresh/retry podem inflar). <code>checkout_started</code> é <b>1 por análise</b> (sessão reutilizada via guard <code>ck:&lt;token&gt;</code>) e <code>payment_completed</code> é <b>1 por venda</b> (idempotente via guard <code>paid:&lt;token&gt;</code> — webhook reentregue não conta 2×). Receita = vendas × R$ 9,90.
+  </div>
+</div>
+
+<script>
+const KEY = new URLSearchParams(location.search).get("key") || "";
+const STAGES = [
+  ["landing_view", "Visitantes"],
+  ["analysis_started", "Análises iniciadas"],
+  ["analysis_completed", "Análises concluídas"],
+  ["result_viewed", "Resultados vistos"],
+  ["locked_insights_viewed", "Insights bloqueados vistos"],
+  ["unlock_clicked", "Clique para desbloquear"],
+  ["checkout_started", "Checkout iniciado"],
+  ["payment_completed", "Pagamentos"],
+  ["full_report_viewed", "Relatório completo visto"]
+];
+let DAYS = 7;
+
+const fmt = n => (n || 0).toLocaleString("pt-BR");
+const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
+const cls = r => r >= 60 ? "hot" : r >= 25 ? "mid" : "cold";
+
+async function load() {
+  try {
+    const res = await fetch("/api/stats?days=" + DAYS + (KEY ? "&key=" + encodeURIComponent(KEY) : ""), { headers: { "cache-control": "no-cache" } });
+    if (res.status === 403) { document.getElementById("updated").textContent = "Acesso negado — falta a chave (?key=…)."; return; }
+    const d = await res.json();
+    const w = d.window || {};
+    const t = d.total || {};
+    const conv = d.conv || {};
+
+    const label = DAYS === 0 ? "todo período" : DAYS === 1 ? "hoje" : "últimos " + DAYS + " dias";
+    document.getElementById("updated").textContent =
+      "Período: " + label + " · atualizado " + new Date().toLocaleTimeString("pt-BR") + " · dia de referência " + (d.day || "");
+
+    document.getElementById("kVisitas").textContent = fmt(w.landing_view);
+    document.getElementById("kAnalises").textContent = fmt(w.analysis_completed);
+    document.getElementById("kUnlock").textContent = fmt(w.unlock_clicked);
+    document.getElementById("kCheckout").textContent = fmt(w.checkout_started);
+    document.getElementById("kVendas").textContent = fmt(w.payment_completed);
+    document.getElementById("kConv").textContent = conv["landing→paid"] || "–";
+    const vendas = w.payment_completed || 0;
+    document.getElementById("kReceita").innerHTML = "R$ " + fmt(vendas * 9.9).replace(",", ".") + '<small> (9,90×' + fmt(vendas) + ")</small>";
+
+    // Funil: barras proporcionais a landing_view
+    const funnel = document.getElementById("funnel");
+    funnel.innerHTML = "";
+    const base = Math.max(1, w.landing_view || 1);
+    STAGES.forEach(([key, name]) => {
+      const count = w[key] || 0;
+      const r = pct(count, base);
+      const row = document.createElement("div");
+      row.className = "frow";
+      row.innerHTML = `<div class="name">${name}</div>` +
+        `<div class="track"><i style="width:${Math.max(1, Math.min(100, Math.round((count / base) * 100)))}%"></i></div>` +
+        `<div class="count">${fmt(count)}</div>` +
+        `<div class="pct">${r === null ? "–" : r + "%"}</div>`;
+      funnel.appendChild(row);
+    });
+
+    // Tabela: quantidade, conv. anterior, conv. total, drop para a próxima
+    const tb = document.getElementById("tbody");
+    tb.innerHTML = "";
+    STAGES.forEach(([key, name], i) => {
+      const count = w[key] || 0;
+      const prev = i > 0 ? w[STAGES[i - 1][0]] || 0 : 0;
+      const next = i < STAGES.length - 1 ? w[STAGES[i + 1][0]] || 0 : null;
+      const convPrev = pct(count, prev);
+      const convTotal = pct(count, w.landing_view);
+      let dropHtml = "–";
+      if (next !== null && count > 0) {
+        const drop = Math.round(((count - next) / count) * 100);
+        dropHtml = `<span class="${drop > 60 ? "drop-bad" : "drop-ok"}">${drop}%</span>`;
+      }
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><b>${name}</b><br><span style="color:var(--faint);font-size:11px">${key}</span></td>` +
+        `<td><b>${fmt(count)}</b></td>` +
+        `<td class="${convPrev === null ? "" : cls(convPrev)}">${convPrev === null ? "—" : convPrev + "%"}</td>` +
+        `<td class="${convTotal === null ? "" : cls(convTotal)}">${convTotal === null ? "—" : convTotal + "%"}</td>` +
+        `<td>${dropHtml}</td>`;
+      tb.appendChild(tr);
+    });
+  } catch (e) {
+    document.getElementById("updated").textContent = "falha ao carregar: " + e.message;
+  }
+}
+
+document.getElementById("period").addEventListener("click", ev => {
+  const btn = ev.target.closest("button");
+  if (!btn) return;
+  DAYS = Number(btn.dataset.days);
+  document.querySelectorAll("#period button").forEach(b => b.classList.toggle("on", b === btn));
+  load();
+});
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

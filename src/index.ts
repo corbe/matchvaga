@@ -2,9 +2,10 @@ interface Env {
   ASSETS: Fetcher;
   RESULTS: KVNamespace;
   OPENAI_API_KEY: string;
-  OPENAI_MODEL: string;
-  PRICE_BRL: string;
-  PIX_KEY: string;
+  OPENAI_MODEL?: string;
+  PRICE_BRL?: string;
+  PIX_KEY?: string;
+  STATS_KEY?: string; // proteção do dashboard /api/stats (opcional)
   UNLOCK_CODE: string;
   RATE_LIMIT_PER_HOUR: string;
   DAILY_PREVIEW_BUDGET: string;
@@ -535,6 +536,13 @@ async function handleCheckout(request: Request, env: Env) {
   // usuário não perder o conteúdo depois de pagar.
   await env.RESULTS.put(`result:${token}`, raw, { expirationTtl: RESULT_TTL });
 
+  // Checkout idempotente: duplo clique/refresh reusa a MESMA sessão Stripe e
+  // não infla checkout_started (um checkout por análise).
+  const existing = await env.RESULTS.get(`ck:${token}`);
+  if (existing) {
+    return json({ url: existing });
+  }
+
   const origin = request.headers.get("origin") || `https://${request.headers.get("host") || "matchvaga.kubezen.com"}`;
   const form = new URLSearchParams();
   form.set("mode", "payment");
@@ -543,7 +551,7 @@ async function handleCheckout(request: Request, env: Env) {
   form.set("metadata[token]", token);
   form.set("line_items[0][quantity]", "1");
   form.set("line_items[0][price_data][currency]", "brl");
-  form.set("line_items[0][price_data][unit_amount]", String(brlToCents(env.PRICE_BRL)));
+  form.set("line_items[0][price_data][unit_amount]", String(brlToCents(env.PRICE_BRL || "9,90")));
   form.set("line_items[0][price_data][product_data][name]", "MatchVaga — Kit para esta candidatura");
 
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
@@ -560,6 +568,7 @@ async function handleCheckout(request: Request, env: Env) {
     console.error("Stripe error", res.status, JSON.stringify(data));
     return json({ error: "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente." }, 502);
   }
+  await env.RESULTS.put(`ck:${token}`, data.url, { expirationTtl: RESULT_TTL });
   await bump(env, "checkout_started");
   return json({ url: data.url });
 }
@@ -853,37 +862,61 @@ async function handleStatus(env: Env) {
   });
 }
 
-async function handleStats(env: Env) {
+async function handleStats(env: Env, url: URL) {
+  // Proteção interna: se STATS_KEY estiver definida, exige ?key=<chave>.
+  if (env.STATS_KEY && url.searchParams.get("key") !== env.STATS_KEY) {
+    return json({ error: "Acesso negado." }, 403);
+  }
+
+  // Período: 1=hoje, 7, 30, 0=todo período (totais). Usa as chaves diárias.
+  const daysParam = Math.max(0, Math.min(365, Number(url.searchParams.get("days") || "1") || 0));
   const day = new Date().toISOString().slice(0, 10);
   const today: Record<string, number> = {};
   const total: Record<string, number> = {};
+  const window: Record<string, number> = {};
+  const dates: string[] = [];
+  if (daysParam > 0) {
+    for (let i = 0; i < daysParam; i++) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      dates.push(d);
+    }
+  }
   for (const stage of FUNNEL_STAGES) {
     today[stage] = await kvCount(env, `ev:${stage}:${day}`);
     total[stage] = await kvCount(env, `evt:${stage}`);
+    let sum = 0;
+    for (const d of dates) sum += await kvCount(env, `ev:${stage}:${d}`);
+    window[stage] = daysParam > 0 ? sum : total[stage];
   }
-  // Taxas de conversão do funil (evitando divisão por zero).
-  const conv: Record<string, string> = {};
   const rate = (from: number, to: number) => (from > 0 ? `${Math.round((to / from) * 100)}%` : null);
-  const t = total;
-  const c1 = rate(t.landing_view, t.analysis_started);
-  const c2 = rate(t.analysis_started, t.analysis_completed);
-  const c3 = rate(t.analysis_completed, t.result_viewed);
-  const c4 = rate(t.result_viewed, t.locked_insights_viewed);
-  const c5 = rate(t.locked_insights_viewed, t.unlock_clicked);
-  const c6 = rate(t.unlock_clicked, t.checkout_started);
-  const c7 = rate(t.checkout_started, t.payment_completed);
-  const c8 = rate(t.payment_completed, t.full_report_viewed);
-  const totalConv = rate(t.landing_view, t.payment_completed);
-  if (c1) conv["landing→analysis"] = c1;
-  if (c2) conv["analysis→completed"] = c2;
-  if (c3) conv["completed→result"] = c3;
-  if (c4) conv["result→insights"] = c4;
-  if (c5) conv["insights→unlock"] = c5;
-  if (c6) conv["unlock→checkout"] = c6;
-  if (c7) conv["checkout→paid"] = c7;
-  if (c8) conv["paid→report"] = c8;
-  if (totalConv) conv["landing→paid"] = totalConv;
-  return json({ day, today, total, conv });
+  const buildConv = (t: Record<string, number>): Record<string, string> => {
+    const conv: Record<string, string> = {};
+    const pairs: [string, string, string][] = [
+      ["landing_view", "analysis_started", "landing→analysis"],
+      ["analysis_started", "analysis_completed", "analysis→completed"],
+      ["analysis_completed", "result_viewed", "completed→result"],
+      ["result_viewed", "locked_insights_viewed", "result→insights"],
+      ["locked_insights_viewed", "unlock_clicked", "insights→unlock"],
+      ["unlock_clicked", "checkout_started", "unlock→checkout"],
+      ["checkout_started", "payment_completed", "checkout→paid"],
+      ["payment_completed", "full_report_viewed", "paid→report"],
+      ["landing_view", "payment_completed", "landing→paid"]
+    ];
+    for (const [a, b, name] of pairs) {
+      const r = rate(t[a], t[b]);
+      if (r) conv[name] = r;
+    }
+    return conv;
+  };
+  return json({
+    day,
+    days: daysParam,
+    window,
+    today,
+    total,
+    conv: buildConv(window),
+    convTotal: buildConv(total)
+  });
 }
 
 async function handleConfig(env: Env) {
@@ -929,7 +962,15 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/api/stats") {
-      return handleStats(env);
+      return handleStats(env, url);
+    }
+
+    // Dashboard do funil — rota interna protegida (não conta como landing_view).
+    if (request.method === "GET" && (url.pathname === "/dashboard" || url.pathname === "/stats")) {
+      if (env.STATS_KEY && url.searchParams.get("key") !== env.STATS_KEY) {
+        return json({ error: "Acesso negado." }, 403);
+      }
+      return Response.redirect(new URL("/dashboard.html" + url.search, url).toString(), 302);
     }
 
     if (request.method === "GET" && url.pathname === "/api/config") {
