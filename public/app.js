@@ -291,6 +291,9 @@ function renderResult(data) {
 
   $("result").classList.remove("hidden");
   $("paywall").classList.remove("hidden");
+  // Análise nova substitui qualquer pagamento/estado anterior pendente.
+  sessionStorage.removeItem("mv-pending");
+  sessionStorage.removeItem("mv-token");
   // analysis_completed é contado no servidor (handlePreview), não aqui.
 
   trackOnView("paywall", "locked_insights_viewed");
