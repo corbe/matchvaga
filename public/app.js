@@ -139,6 +139,21 @@ async function runAnalysis() {
   btn.textContent = "Analisando...";
   showLoading();
 
+  // Limite de envio: textos gigantes (extração de PDF pode inflar) são
+  // truncados ANTES do fetch — o servidor rejeita corpos grandes com 413.
+  const MAX_CV_SEND = 4000;
+  const MAX_JOB_SEND = 2500;
+  let cvSend = cv;
+  let jobSend = job;
+  if (cvSend.length > MAX_CV_SEND) {
+    cvSend = cvSend.slice(0, MAX_CV_SEND);
+    showStatus("Currículo longo: analisamos os primeiros " + MAX_CV_SEND + " caracteres.", "ok");
+  }
+  if (jobSend.length > MAX_JOB_SEND) {
+    jobSend = jobSend.slice(0, MAX_JOB_SEND);
+    showStatus("Vaga longa: analisamos os primeiros " + MAX_JOB_SEND + " caracteres.", "ok");
+  }
+
   // Rotaciona as mensagens de progresso SEM atrasar a API.
   const started = Date.now();
   let stepIdx = 0;
@@ -153,7 +168,7 @@ async function runAnalysis() {
     const response = await fetch("/api/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ cv, job, turnstile: turnstileToken })
+      body: JSON.stringify({ cv: cvSend, job: jobSend, turnstile: turnstileToken })
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || !data) {
@@ -253,7 +268,8 @@ function attentionCard(a) {
 
 function showFriendlyError(err) {
   const msg = err && err.message ? err.message : "";
-  const friendly = /já foi desbloqueada|Limite diário|Muitas análises/i.test(msg) ? msg
+  // Mensagens específicas passam; o resto vira o erro amigável genérico.
+  const friendly = /já foi desbloqueada|Limite diário|Muitas análises|muito grande/i.test(msg) ? msg
     : "Não conseguimos concluir sua análise. Tente novamente.";
   showStatus(friendly, "error");
   const btn = $("analyze");

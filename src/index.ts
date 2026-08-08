@@ -50,8 +50,8 @@ const securityHeaders: Record<string, string> = {
     // vencer a corrida contra o load da tag, re-executamos o api.js via eval no
     // mesmo task da limpeza. O código avaliado é o próprio api.js da Cloudflare,
     // baixado via HTTPS de challenges.cloudflare.com.
-    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com 'unsafe-eval'; " +
-    "style-src 'self'; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com; " +
+    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com 'unsafe-eval'; " +
+    "style-src 'self'; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com; " +
     "base-uri 'self'; form-action 'self'; frame-src https://challenges.cloudflare.com; " +
     "worker-src https://challenges.cloudflare.com blob:; frame-ancestors 'none'"
 };
@@ -143,9 +143,38 @@ async function bump(env: Env, stage: FunnelStage) {
 // retry — o usuário recebe 504/HTML em vez de um JSON de erro. Uma tentativa
 // de 25s cobre picos de latência da DeepSeek e, se estourar, o botão
 // "Tentar novamente" inicia uma janela nova (e o rate limit é devolvido).
+// Tolerante a JSON truncado: se a IA cortar a resposta no meio (limite de
+// tokens), tenta fechar objetos/arrays pendentes antes de desistir.
+function parseLoose(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    // tenta reparar: completa chaves/colchetes não fechados no fim
+  }
+  const openBraces = (text.match(/\{/g) || []).length;
+  const closeBraces = (text.match(/\}/g) || []).length;
+  const openBrackets = (text.match(/\[/g) || []).length;
+  const closeBrackets = (text.match(/\]/g) || []).length;
+  let repaired = text;
+  if (closeBrackets < openBrackets) repaired += "]".repeat(openBrackets - closeBrackets);
+  if (closeBraces < openBraces) repaired += "}".repeat(openBraces - closeBraces);
+  try {
+    return JSON.parse(repaired);
+  } catch {
+    throw new Error("JSON inválido da IA");
+  }
+}
+
 async function callOpenAI(env: Env, cv: string, job: string): Promise<PremiumResult> {
+  // Limita o tamanho dos inputs: currículo/vaga gigantes não agregam à análise
+  // e atrasam a geração — o principal motivo de timeout com pastes reais.
+  const MAX_CV = 3000;
+  const MAX_JOB = 2000;
+  const cvTrim = cv.length > MAX_CV ? cv.slice(0, MAX_CV) + "\n[...]" : cv;
+  const jobTrim = job.length > MAX_JOB ? job.slice(0, MAX_JOB) + "\n[...]" : job;
+
   const input = `
-Compare rigorosamente o currículo com a vaga.
+ Compare rigorosamente o currículo com a vaga.
 
 REGRAS DE INTEGRIDADE (obrigatórias):
 - NUNCA invente experiência, empresa, cargo, tecnologia, certificação ou resultado.
@@ -172,20 +201,21 @@ FORMATO DE RESPOSTA (JSON válido, sem markdown, EXATAMENTE estas chaves):
 
 REGRAS ADICIONAIS:
 - requirements: agrupe os requisitos da vaga em 2-4 categorias.
-- table: cubra os requisitos principais (5-10 linhas), com evidência honesta.
-- strengths: no máximo 4 itens.
-- attention: no máximo 4 itens (os 2 primeiros serão exibidos gratuitamente).
-- locked_insights: 4-5 títulos curtos e específicos DESTA análise (o que o relatório completo revela).
-- rewrites: 2-3 trechos reais do currículo com sugestão honesta de melhoria.
-- optimized_cv: máximo 2500 caracteres.
-- interview_questions: no máximo 6.
-SEJA CONCISO.
+- table: cubra os requisitos principais (5-6 linhas), com evidência honesta.
+- strengths: no máximo 3 itens.
+- attention: no máximo 3 itens (os 2 primeiros serão exibidos gratuitamente).
+- locked_insights: 4 títulos curtos e específicos DESTA análise (o que o relatório completo revela).
+- rewrites: no máximo 2 trechos reais do currículo com sugestão honesta de melhoria.
+- optimized_cv: máximo 1200 caracteres.
+- interview_questions: no máximo 4.
+CRÍTICO: a resposta JSON inteira deve ter no máximo 2000 caracteres. Se o
+currículo for extenso, priorize o essencial. NUNCA deixe o JSON incompleto.
 
 CURRÍCULO:
-${cv}
+${cvTrim}
 
 VAGA:
-${job}
+${jobTrim}
 `;
 
   const response = await fetch("https://api.deepseek.com/chat/completions", {
@@ -209,7 +239,9 @@ ${job}
       response_format: { type: "json_object" },
       temperature: 0.3,
       thinking: { type: "disabled" },
-      max_tokens: 4000
+      // Saída limitada: geração menor = resposta mais rápida e JSON sempre
+      // completo dentro dos 25s (truncar no meio do JSON derruba a análise).
+      max_tokens: 2000,
     })
   });
 
@@ -227,7 +259,7 @@ ${job}
   if (!outputText) throw new Error("OPENAI_EMPTY");
 
   // Normaliza: o JSON mode da DeepSeek não garante o schema — defaults seguros.
-  const parsed = JSON.parse(outputText) as Partial<PremiumResult>;
+  const parsed = parseLoose(outputText) as Partial<PremiumResult>;
   const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
   const arr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
   const obj = <T extends Record<string, unknown>>(v: unknown): T | null =>
@@ -245,25 +277,25 @@ ${job}
       situation: str(t!.situation, "Melhorar"),
       evidence: str(t!.evidence, "—")
     })),
-    strengths: arr(parsed.strengths).map(obj).filter(Boolean).slice(0, 4).map(s => ({
+    strengths: arr(parsed.strengths).map(obj).filter(Boolean).slice(0, 3).map(s => ({
       requirement: str(s!.requirement, "Requisito"),
       explanation: str(s!.explanation, "Bem demonstrado no currículo.")
     })),
-    attention: arr(parsed.attention).map(obj).filter(Boolean).slice(0, 4).map(a => ({
+    attention: arr(parsed.attention).map(obj).filter(Boolean).slice(0, 3).map(a => ({
       requirement: str(a!.requirement, "Requisito"),
       what_we_found: str(a!.what_we_found, "A vaga menciona este requisito."),
       in_your_cv: str(a!.in_your_cv, "Não encontramos claramente no currículo."),
       what_to_do: str(a!.what_to_do, "Se você realmente possui esta experiência, considere evidenciá-la melhor no currículo.")
     })),
-    locked_insights: arr(parsed.locked_insights).filter(i => typeof i === "string").slice(0, 5) as string[],
-    rewrites: arr(parsed.rewrites).map(obj).filter(Boolean).slice(0, 3).map(r => ({
+    locked_insights: arr(parsed.locked_insights).filter(i => typeof i === "string").slice(0, 4) as string[],
+    rewrites: arr(parsed.rewrites).map(obj).filter(Boolean).slice(0, 2).map(r => ({
       original: str(r!.original, ""),
       suggestion: str(r!.suggestion, ""),
       why: str(r!.why, "")
     })),
     optimized_cv: str(parsed.optimized_cv, ""),
     recruiter_message: str(parsed.recruiter_message, ""),
-    interview_questions: arr(parsed.interview_questions).filter(q => typeof q === "string").slice(0, 6) as string[]
+    interview_questions: arr(parsed.interview_questions).filter(q => typeof q === "string").slice(0, 4) as string[]
   } as PremiumResult;
 }
 
@@ -472,8 +504,8 @@ async function handlePreview(request: Request, env: Env) {
   if (job.length < 30) {
     return json({ error: "Cole a descrição da vaga completa." }, 400);
   }
-  if (cv.length > 18000 || job.length > 12000) {
-    return json({ error: "Texto muito grande para esta versão." }, 413);
+  if (cv.length > 10000 || job.length > 5000) {
+    return json({ error: "Texto muito grande para esta versão. Envie um currículo mais resumido." }, 413);
   }
 
   // Anti-bot: exige Turnstile válido QUANDO o token vem preenchido.
