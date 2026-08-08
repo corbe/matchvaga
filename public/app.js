@@ -544,6 +544,19 @@ function renderPremium(p) {
   $("pOptimized").textContent = p.optimized_cv || "";
   $("pMessage").textContent = p.recruiter_message || "";
 
+  // Esconde seções vazias (relatório incompleto nunca mostra buraco feio).
+  ["pOptimized", "pMessage", "pQuestions", "pRewrites", "pAttention", "reqTable"].forEach(id => {
+    const el = $(id);
+    const card = el ? el.closest(".card") : null;
+    if (!card) return;
+    const empty = id === "reqTable" ? !(p.table && p.table.length)
+      : id === "pRewrites" ? !(p.rewrites && p.rewrites.length)
+      : id === "pAttention" ? !(p.attention && p.attention.length)
+      : id === "pQuestions" ? !(p.interview_questions && p.interview_questions.length)
+      : !el.textContent.trim();
+    card.style.display = empty ? "none" : "";
+  });
+
   clearEl("pQuestions");
   (p.interview_questions || []).forEach(q => {
     const li = document.createElement("li");

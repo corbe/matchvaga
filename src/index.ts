@@ -183,6 +183,56 @@ function parseLoose(text: string): any {
   throw new Error("JSON inválido da IA");
 }
 
+// Retry compacto: usado quando a 1ª resposta vem com JSON inválido/truncado.
+// DIFERENTE do reparo tolerante, EXIGE todas as chaves (o reparo corta no fim
+// e perde optimized_cv/mensagem/perguntas). Cabe no orçamento do Worker.
+async function compactRetry(env: Env, input: string): Promise<Partial<PremiumResult>> {
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "authorization": `Bearer ${env.OPENAI_API_KEY}`,
+      "content-type": "application/json"
+    },
+    signal: AbortSignal.timeout(20000),
+    body: JSON.stringify({
+      model: env.OPENAI_MODEL || "deepseek-v4-flash",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Você é um analista de currículos experiente e honesto. Responda APENAS com JSON válido, sem markdown, sem comentários. Nunca invente informações sobre o candidato."
+        },
+        {
+          role: "user",
+          content:
+            input +
+            "\n\nIMPORTANTE: sua resposta anterior foi inválida ou incompleta. Responda APENAS com JSON válido, COMPACTO e COMPLETO, mantendo TODAS as chaves do formato: score, score_explanation, requirements, table, strengths, attention, locked_insights, rewrites, optimized_cv (máximo 600 caracteres), recruiter_message (máximo 250 caracteres), interview_questions (2-3 itens). Total máximo 1600 caracteres."
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.2,
+      thinking: { type: "disabled" },
+      max_tokens: 1500
+    })
+  });
+  if (!response.ok) throw new Error("OPENAI_FAILED");
+  const data: any = await response.json();
+  let text = String(data?.choices?.[0]?.message?.content ?? "").trim();
+  if (text.startsWith("```")) {
+    text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  }
+  if (!text) throw new Error("OPENAI_EMPTY");
+  return JSON.parse(text) as Partial<PremiumResult>;
+}
+
+// Análise completa exige os campos longos (cv otimizado, mensagem, perguntas).
+function isCompletePremium(p: PremiumResult): boolean {
+  return !!p &&
+    typeof p.optimized_cv === "string" && p.optimized_cv.length > 50 &&
+    typeof p.recruiter_message === "string" && p.recruiter_message.length > 20 &&
+    Array.isArray(p.interview_questions) && p.interview_questions.length >= 1;
+}
+
 async function callOpenAI(env: Env, cv: string, job: string): Promise<PremiumResult> {
   // Limita o tamanho dos inputs: currículo/vaga gigantes não agregam à análise
   // e atrasam a geração — o principal motivo de timeout com pastes reais.
@@ -279,49 +329,20 @@ ${jobTrim}
   // Normaliza: o JSON mode da DeepSeek não garante o schema — defaults seguros.
   let parsed: Partial<PremiumResult>;
   try {
-    parsed = parseLoose(outputText) as Partial<PremiumResult>;
+    // 1) JSON íntegro → usa direto
+    parsed = JSON.parse(outputText) as Partial<PremiumResult>;
   } catch {
-    // JSON inválido/truncado: UMA segunda tentativa com instrução compacta.
-    // Cabe no orçamento do Worker (falha típica ~5-12s + retry ~10s < 30s).
-    console.error("JSON inválido da IA na 1ª tentativa — retentando compacto");
-    const retryResponse = await fetch("https://api.deepseek.com/chat/completions", {
-      method: "POST",
-      headers: {
-        "authorization": `Bearer ${env.OPENAI_API_KEY}`,
-        "content-type": "application/json"
-      },
-      signal: AbortSignal.timeout(20000),
-      body: JSON.stringify({
-        model: env.OPENAI_MODEL || "deepseek-v4-flash",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Você é um analista de currículos experiente e honesto. Responda APENAS com JSON válido, sem markdown, sem comentários. Nunca invente informações sobre o candidato."
-          },
-          {
-            role: "user",
-            content:
-              input +
-              "\n\nIMPORTANTE: sua resposta anterior foi inválida ou incompleta. Responda APENAS com JSON válido e COMPACTO (no máximo 1300 caracteres no total)."
-          }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-        thinking: { type: "disabled" },
-        max_tokens: 1200
-      })
-    });
-    if (retryResponse.ok) {
-      const retryData: any = await retryResponse.json();
-      let retryText = String(retryData?.choices?.[0]?.message?.content ?? "").trim();
-      if (retryText.startsWith("```")) {
-        retryText = retryText.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-      }
-      parsed = parseLoose(retryText) as Partial<PremiumResult>;
-    } else {
-      throw new Error("OPENAI_FAILED");
+    // 2) Malformado/truncado: tenta retry compacto PRIMEIRO (o reparo de JSON
+    // corta no fim e perde campos longos — não pode ser aceito como completo).
+    let retried = false;
+    try {
+      parsed = await compactRetry(env, input);
+      retried = true;
+    } catch {
+      // 3) Último recurso: reparo tolerante do texto truncado.
+      parsed = parseLoose(outputText) as Partial<PremiumResult>;
     }
+    if (retried) console.error("Usando retry compacto após JSON inválido na 1ª tentativa");
   }
   const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
   const arr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
@@ -620,11 +641,20 @@ async function handlePreview(request: Request, env: Env) {
     }
 
     // 3) Cache por hash: análises idênticas repetidas não gastam créditos de novo.
+    // Cache incompleto (IA cortou campos longos) NÃO é reaproveitado.
     const hash = await contentHash(cv, job);
-    const cached = await env.RESULTS.get(`cache:${hash}`);
-    const premium: PremiumResult = cached
-      ? (JSON.parse(cached) as PremiumResult)
-      : await callOpenAI(env, cv, job);
+    const cachedRaw = await env.RESULTS.get(`cache:${hash}`);
+    let cached: PremiumResult | null = null;
+    if (cachedRaw) {
+      try {
+        const parsed = JSON.parse(cachedRaw) as PremiumResult;
+        if (isCompletePremium(parsed)) cached = parsed;
+        else await env.RESULTS.delete(`cache:${hash}`).catch(() => {});
+      } catch {
+        await env.RESULTS.delete(`cache:${hash}`).catch(() => {});
+      }
+    }
+    const premium: PremiumResult = cached ?? (await callOpenAI(env, cv, job));
 
     if (!cached) {
       await env.RESULTS.put(`cache:${hash}`, JSON.stringify(premium), { expirationTtl: 86400 });
