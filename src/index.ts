@@ -138,22 +138,12 @@ async function bump(env: Env, stage: FunnelStage) {
   await env.RESULTS.put(totalKey, String(totalCount + 1));
 }
 
-// Tenta até 2x: picos de latência da DeepSeek são transitórios e não devem
-// derrubar a análise do usuário. O refund de cota só acontece se AMBAS falharem.
+// Tentativa ÚNICA com timeout generoso: duas tentativas de 14s ultrapassam o
+// orçamento de execução do Worker (~30s) e o edge mata a requisição no meio do
+// retry — o usuário recebe 504/HTML em vez de um JSON de erro. Uma tentativa
+// de 25s cobre picos de latência da DeepSeek e, se estourar, o botão
+// "Tentar novamente" inicia uma janela nova (e o rate limit é devolvido).
 async function callOpenAI(env: Env, cv: string, job: string): Promise<PremiumResult> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      return await callOpenAIOnce(env, cv, job);
-    } catch (err) {
-      lastErr = err;
-      console.error(`callOpenAI tentativa ${attempt + 1} falhou:`, err);
-    }
-  }
-  throw lastErr;
-}
-
-async function callOpenAIOnce(env: Env, cv: string, job: string): Promise<PremiumResult> {
   const input = `
 Compare rigorosamente o currículo com a vaga.
 
@@ -204,8 +194,8 @@ ${job}
       "authorization": `Bearer ${env.OPENAI_API_KEY}`,
       "content-type": "application/json"
     },
-    // 2 tentativas de até 14s cabem no limite de execução do Worker (~30s).
-    signal: AbortSignal.timeout(14000),
+    // 25s: cabe no orçamento de execução do Worker (~30s) com margem.
+    signal: AbortSignal.timeout(25000),
     body: JSON.stringify({
       model: env.OPENAI_MODEL || "deepseek-v4-flash",
       messages: [
@@ -738,6 +728,15 @@ export default {
     const headers = new Headers(asset.headers);
     for (const [name, value] of Object.entries(securityHeaders)) {
       if (!headers.has(name)) headers.set(name, value);
+    }
+    // Cache à prova de versão antiga: HTML nunca é cacheado (nem por proxies
+    // intermediários); JS/CSS revalidam sempre; só binários estáveis cacheiam.
+    if (url.pathname.endsWith(".html") || url.pathname === "/") {
+      headers.set("Cache-Control", "no-store");
+    } else if (url.pathname.endsWith(".js") || url.pathname.endsWith(".css")) {
+      headers.set("Cache-Control", "no-cache, max-age=0, must-revalidate");
+    } else {
+      headers.set("Cache-Control", "public, max-age=86400");
     }
     return new Response(asset.body, {
       status: asset.status,
