@@ -686,6 +686,23 @@ async function initTurnstile() {
     msg.className = "hint small";
     msg.textContent = "Verificação de segurança indisponível neste navegador. Sem problema: a análise continua disponível, com limite de uso por IP.";
     $("turnstile").appendChild(msg);
+
+    // Diagnóstico oculto: ?tsdiag=1 mostra o estado real do shim na página.
+    if (new URLSearchParams(location.search).get("tsdiag") === "1") {
+      let diag = "turnstile in window: " + ("turnstile" in window) + "\n";
+      const desc = Object.getOwnPropertyDescriptor(window, "turnstile");
+      diag += "own property: " + !!desc + (desc ? " | configurable: " + desc.configurable + " | writable: " + desc.writable : "") + "\n";
+      let del = "n/a";
+      if (desc && desc.configurable) {
+        try { del = String(delete window.turnstile); } catch (e) { del = "throw: " + e.message; }
+      }
+      diag += "delete result: " + del + "\n";
+      diag += "keys: " + (window.turnstile ? Object.keys(window.turnstile).join(",") : "none") + "\n";
+      const pre = document.createElement("pre");
+      pre.style.cssText = "margin-top:10px;font-size:11px;text-align:left;background:#f2f4f7;padding:8px;border-radius:8px;white-space:pre-wrap";
+      pre.textContent = diag;
+      $("turnstile").appendChild(pre);
+    }
   }
 }
 
