@@ -635,16 +635,18 @@ function clearTurnstileStub() {
 
 const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
-// Carrega a API do Turnstile UMA única vez, via tag <script>.
+// Carrega a API do Turnstile via tag <script>.
 // NUNCA re-executar via eval: o api.js detecta window.turnstile existente
 // ("Turnstile already has been loaded") e desiste, deixando um objeto vazio.
+// Se a 1ª carga falhar, limpa qualquer shim e tenta UMA 2ª vez (alguns
+// softwares de segurança re-injetam o shim continuamente).
 async function loadTurnstileScript() {
   if (window.turnstile && typeof window.turnstile.render === "function") return;
 
   clearTurnstileStub();
   document.querySelectorAll('script[src*="challenges.cloudflare.com/turnstile"]').forEach(s => s.remove());
 
-  await new Promise(resolve => {
+  const injectScript = () => new Promise(resolve => {
     const s = document.createElement("script");
     s.src = TURNSTILE_SRC;
     s.async = true;
@@ -652,6 +654,14 @@ async function loadTurnstileScript() {
     s.onerror = resolve; // falhou → degradação graciosa (captcha é opcional)
     document.head.appendChild(s);
   });
+
+  await injectScript();
+  if (window.turnstile && typeof window.turnstile.render === "function") return;
+
+  // 2ª tentativa com limpeza do shim entre as cargas.
+  clearTurnstileStub();
+  await new Promise(r => setTimeout(r, 800));
+  await injectScript();
 
   if (!(window.turnstile && typeof window.turnstile.render === "function")) {
     console.warn("[turnstile] script carregado mas API não inicializou (keys: " +
@@ -677,13 +687,13 @@ async function initTurnstile() {
       theme: "light"
     });
   } catch (err) {
-    // Esperado em máquinas com AV que bloqueia challenges.cloudflare.com —
+    // Esperado quando um software de segurança injeta um shim de turnstile —
     // ruído de console, não um erro real: a análise segue sem captcha.
     console.warn("[turnstile]", err?.message || err);
     // Degradação graciosa: sem captcha o usuário NÃO fica bloqueado.
     const msg = document.createElement("p");
     msg.className = "hint small";
-    msg.textContent = "O captcha não carregou (bloqueador ou antivírus?). Sem problema: a análise continua disponível, com limite de uso por IP.";
+    msg.textContent = "Verificação de segurança indisponível neste navegador. Sem problema: a análise continua disponível, com limite de uso por IP.";
     $("turnstile").appendChild(msg);
   }
 }
