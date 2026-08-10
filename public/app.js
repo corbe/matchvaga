@@ -692,12 +692,22 @@ async function initTurnstile() {
       let diag = "turnstile in window: " + ("turnstile" in window) + "\n";
       const desc = Object.getOwnPropertyDescriptor(window, "turnstile");
       diag += "own property: " + !!desc + (desc ? " | configurable: " + desc.configurable + " | writable: " + desc.writable : "") + "\n";
-      let del = "n/a";
-      if (desc && desc.configurable) {
-        try { del = String(delete window.turnstile); } catch (e) { del = "throw: " + e.message; }
+      // Varre a cadeia de protótipos: onde está o turnstile e dá para apagar?
+      let p = window, depth = 0;
+      while (p && depth < 6) {
+        if (Object.prototype.hasOwnProperty.call(p, "turnstile")) {
+          const d2 = Object.getOwnPropertyDescriptor(p, "turnstile");
+          let del = "n/a";
+          if (d2 && d2.configurable) {
+            try { del = String(delete p.turnstile); } catch (e) { del = "throw:" + e.message; }
+          } else if (d2) {
+            del = "não-configurável";
+          }
+          diag += "depth " + depth + " (" + ((p.constructor && p.constructor.name) || Object.prototype.toString.call(p)) + "): configurable=" + (d2 ? d2.configurable : "?") + " delete=" + del + "\n";
+        }
+        p = Object.getPrototypeOf(p);
+        depth++;
       }
-      diag += "delete result: " + del + "\n";
-      diag += "keys: " + (window.turnstile ? Object.keys(window.turnstile).join(",") : "none") + "\n";
       const pre = document.createElement("pre");
       pre.style.cssText = "margin-top:10px;font-size:11px;text-align:left;background:#f2f4f7;padding:8px;border-radius:8px;white-space:pre-wrap";
       pre.textContent = diag;
