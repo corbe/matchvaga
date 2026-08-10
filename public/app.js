@@ -673,7 +673,7 @@ async function initTurnstile() {
       throw new Error("API do Turnstile indisponível no navegador");
     }
 
-    turnstileWidget = window.turnstile.render($("turnstile"), {
+    turnstileWidget = window.turnstile.render($("turnstileWidget"), {
       sitekey: config.turnstile_sitekey,
       theme: "light"
     });
@@ -685,7 +685,7 @@ async function initTurnstile() {
     const msg = document.createElement("p");
     msg.className = "hint small";
     msg.textContent = "Verificação de segurança indisponível neste navegador. Sem problema: a análise continua disponível, com limite de uso por IP.";
-    $("turnstile").appendChild(msg);
+    $("turnstileWidget").appendChild(msg);
 
     // Diagnóstico oculto: ?tsdiag=1 mostra o estado real do shim na página.
     if (new URLSearchParams(location.search).get("tsdiag") === "1") {
@@ -711,7 +711,7 @@ async function initTurnstile() {
       const pre = document.createElement("pre");
       pre.style.cssText = "margin-top:10px;font-size:11px;text-align:left;background:#f2f4f7;padding:8px;border-radius:8px;white-space:pre-wrap";
       pre.textContent = diag;
-      $("turnstile").appendChild(pre);
+      $("turnstileWidget").appendChild(pre);
     }
   }
 }
