@@ -196,7 +196,7 @@ function parseLoose(text: string): any {
 // Retry compacto: usado quando a 1ª resposta vem com JSON inválido/truncado.
 // DIFERENTE do reparo tolerante, EXIGE todas as chaves (o reparo corta no fim
 // e perde optimized_cv/mensagem/perguntas). Cabe no orçamento do Worker.
-async function compactRetry(env: Env, input: string): Promise<Partial<PremiumResult>> {
+async function compactRetry(env: Env, input: string, lang = "pt"): Promise<Partial<PremiumResult>> {
   const response = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: {
@@ -210,7 +210,7 @@ async function compactRetry(env: Env, input: string): Promise<Partial<PremiumRes
         {
           role: "system",
           content:
-            "Você é um analista de currículos experiente e honesto. Responda APENAS com JSON válido, sem markdown, sem comentários. Nunca invente informações sobre o candidato."
+            `Você é um analista de currículos experiente e honesto. Responda APENAS com JSON válido, sem markdown, sem comentários. Escreva TODOS os textos da resposta no idioma: ${LANG_NAMES[lang] || "Português"}. Nunca invente informações sobre o candidato.`
         },
         {
           role: "user",
@@ -275,6 +275,8 @@ async function callOpenAI(env: Env, cv: string, job: string, lang = "pt"): Promi
   const input = `
  Compare rigorosamente o currículo com a vaga.
 
+IDIOMA DA RESPOSTA: escreva TODOS os textos da resposta (score_explanation, requirements, table, strengths, attention, rewrites, recommendations, keywords, optimized_cv, recruiter_message, interview_questions) no idioma: ${LANG_NAMES[lang] || "Português"}. Isso é obrigatório.
+
 REGRAS DE INTEGRIDADE (obrigatórias):
 - NUNCA invente experiência, empresa, cargo, tecnologia, certificação ou resultado.
 - "Não encontrado no currículo" NÃO significa "o candidato não possui": quando um requisito da vaga não aparecer no currículo, diga que NÃO FOI ENCONTRADO no currículo, nunca que o candidato não tem a experiência.
@@ -318,8 +320,6 @@ REGRAS ADICIONAIS:
 - keywords: no máximo 8.
 - optimized_cv: máximo 1200 caracteres.
 - interview_questions: no máximo 4.
-IDIOMA: escreva TODOS os textos da resposta (score_explanation, requirements, table, strengths, attention, rewrites, recommendations, keywords, optimized_cv, recruiter_message, interview_questions) no idioma: ${LANG_NAMES[lang] || "Português"}.
-
 CRÍTICO: a resposta JSON inteira deve ter no máximo 2200 caracteres. Se o
 currículo for extenso, priorize o essencial. NUNCA deixe o JSON incompleto.
 
@@ -344,7 +344,7 @@ ${jobTrim}
         {
           role: "system",
           content:
-            "Você é um analista de currículos experiente e honesto. Responda APENAS com JSON válido, sem markdown, sem comentários. Nunca invente informações sobre o candidato."
+            `Você é um analista de currículos experiente e honesto. Responda APENAS com JSON válido, sem markdown, sem comentários. Escreva TODOS os textos da resposta no idioma: ${LANG_NAMES[lang] || "Português"}. Nunca invente informações sobre o candidato.`
         },
         { role: "user", content: input }
       ],
@@ -380,7 +380,7 @@ ${jobTrim}
     // corta no fim e perde campos longos — não pode ser aceito como completo).
     let retried = false;
     try {
-      parsed = await compactRetry(env, input);
+      parsed = await compactRetry(env, input, lang);
       retried = true;
     } catch {
       // 3) Último recurso: reparo tolerante do texto truncado.
@@ -396,7 +396,7 @@ ${jobTrim}
   if (!isCompletePremium(premium)) {
     console.error("Análise incompleta na 1ª tentativa — retentando compacto");
     try {
-      const retryPremium = normalizePremium(await compactRetry(env, input));
+      const retryPremium = normalizePremium(await compactRetry(env, input, lang));
       applyAntiInvention(retryPremium, cvTrim);
       if (isCompletePremium(retryPremium)) return retryPremium;
     } catch {
