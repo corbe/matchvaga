@@ -1,0 +1,448 @@
+// ── i18n do MatchVaga (PT / EN / ES) ──────────────────────────────
+// Carregado ANTES de app.js/dashboard.js/extract.js. Expõe:
+//   window.t(key, vars)  → texto no idioma atual ({n} interpolado)
+//   window.MV_LANG       → 'pt' | 'en' | 'es'
+//   window.applyI18n()   → aplica [data-i18n]/[data-i18n-ph]/[data-i18n-aria]
+//   window.initLangSelector(id) → liga o <select> + persistência
+(function () {
+  const L10N = {
+    pt: {
+      "lang.name": "Português",
+      // hero
+      "hero.title": "Seu currículo está mostrando que você combina com esta vaga?",
+      "hero.sub": "Compare seu currículo com os requisitos da vaga e veja o que está bem demonstrado — e o que pode estar passando despercebido.",
+      "hero.cta": "Analisar meu currículo",
+      "hero.note": "Grátis para analisar · Sem cadastro",
+      // form
+      "form.title": "Compare com a vaga",
+      "form.cv": "Currículo",
+      "form.upload": "Enviar PDF ou DOCX",
+      "form.uploadHint": "clique para escolher o arquivo",
+      "form.remove": "Remover",
+      "form.privacy": "🔒 Seu currículo é utilizado para realizar esta análise.",
+      "form.pasteToggle": "Prefere colar o texto do currículo?",
+      "form.cvPlaceholder": "Cole aqui o texto do seu currículo...",
+      "form.job": "Descrição da vaga",
+      "form.jobPlaceholder": "Cole aqui a descrição da vaga",
+      "form.analyze": "Analisar compatibilidade →",
+      // loading / live
+      "load.reading": "Lendo currículo",
+      "load.requirements": "Identificando requisitos da vaga",
+      "load.comparing": "Comparando experiências",
+      "load.finishing": "Finalizando seu diagnóstico...",
+      "live.confirming": "Confirmando pagamento",
+      "live.generating": "Gerando análise completa",
+      "load.fileReading": "Lendo o arquivo...",
+      "load.fileLoaded": "Currículo carregado",
+      "load.fileReadOk": "Currículo lido ✓ ",
+      "load.fileReadFail": "Não conseguimos ler o texto deste PDF (pode ser escaneado). Prefere colar o texto manualmente?",
+      "load.fileFail": "Não foi possível ler o arquivo.",
+      "load.longCv": "Currículo longo: analisamos os primeiros ",
+      "load.longJob": "Vaga longa: analisamos os primeiros ",
+      // erros de formulário
+      "err.cv": "Envie seu currículo (PDF ou DOCX) ou cole o texto.",
+      "err.job": "Cole a descrição da vaga para compararmos.",
+      "err.analyzeFirst": "Faça uma análise primeiro.",
+      "err.generic": "Não conseguimos concluir sua análise. Tente novamente.",
+      "err.analysis": "Falha na análise.",
+      "btn.tryAgain": "Tentar novamente",
+      "btn.analyzing": "Analisando...",
+      // resultado
+      "result.scoreLabel": "Compatibilidade com a vaga",
+      "result.scoreTipAria": "O que significa o score",
+      "result.scoreTip": "O score compara informações encontradas no currículo com os requisitos identificados na vaga. Ele não prevê contratação.",
+      "result.strengths": "O que seu currículo demonstra bem",
+      "result.attentionTitle": "Encontramos {n} pontos que merecem atenção",
+      "result.attentionTitle1": "Encontramos 1 ponto que merece atenção",
+      // paywall
+      "paywall.title": "Sua análise ainda tem {n} pontos",
+      "paywall.title1": "Sua análise ainda tem 1 ponto",
+      "paywall.kitTitle": "Na análise completa você recebe",
+      "paywall.kit1": "✓ evidência de cada requisito",
+      "paywall.kit2": "✓ recomendações específicas",
+      "paywall.kit3": "✓ sugestões de reescrita",
+      "paywall.kit4": "✓ currículo adaptado à vaga",
+      "paywall.kit5": "✓ mensagem para recrutador",
+      "paywall.kit6": "✓ preparação para entrevista",
+      "paywall.cta": "Ver análise completa",
+      "paywall.retry": "Liberar minha análise (já paguei)",
+      "paywall.once": "R$ 9,90 · pagamento único",
+      // relatório
+      "premium.title": "Análise completa",
+      "premium.compat": "Compatibilidade",
+      "premium.requirements": "Requisitos identificados",
+      "premium.thReq": "Requisito",
+      "premium.thSit": "Situação",
+      "premium.thEv": "Evidência",
+      "premium.attentionAll": "Todos os pontos de atenção",
+      "premium.rewrites": "Reescritas seguras",
+      "premium.badgeCopy": "pode copiar",
+      "premium.opportunities": "Oportunidades condicionais",
+      "premium.badgeCond": "se você possui a experiência",
+      "premium.optimized": "Currículo otimizado para a vaga",
+      "premium.optimizedNote": "Otimizar ≠ inventar: nada foi adicionado além do que já está no seu currículo.",
+      "premium.keywords": "Palavras-chave relevantes",
+      "premium.message": "Mensagem para o recrutador",
+      "premium.interview": "Preparação para entrevista",
+      // card de atenção
+      "att.jobAsks": "O que a vaga pede",
+      "att.inCv": "No seu currículo",
+      "att.interpretation": "Interpretação",
+      "att.why": "Por que merece atenção",
+      "att.whatToDo": "O que fazer",
+      "att.original": "Original",
+      "att.safeSuggestion": "Sugestão segura",
+      "att.whyShort": "Por quê",
+      // desbloqueio / pagamento
+      "unlock.paid": "Pagamento confirmado. Liberando sua análise...",
+      "unlock.unlocking": "Liberando sua análise...",
+      "unlock.notConfirmed": "Ainda não conseguimos confirmar seu pagamento. Se você já pagou, clique abaixo para liberar sua análise.",
+      "unlock.expired": "Sua análise expirou. Gere uma nova gratuitamente.",
+      "unlock.fail": "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.",
+      "unlock.notDone": "Pagamento não concluído. Nenhuma cobrança foi confirmada. Você pode tentar novamente.",
+      "pay.error": "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.",
+      "refuse.garbage": "Sua análise anterior não pôde ser gerada corretamente (o currículo não foi lido). Refaça a análise gratuitamente — o leitor de PDF foi corrigido.",
+      "refuse.incomplete": "Sua análise anterior ficou incompleta (gerada antes da correção do relatório). Rode a análise novamente para receber o kit completo — isso é gratuito.",
+      // extract.js
+      "extract.unsupported": "Formato não suportado. Envie PDF ou DOCX.",
+      "extract.fail": "Não conseguimos extrair o texto deste arquivo (pode ser escaneado ou ter um formato complexo). Cole o texto do currículo abaixo.",
+      "extract.empty": "O arquivo está vazio ou sem texto legível.",
+      // turnstile
+      "captcha.fallback": "Verificação de segurança indisponível neste navegador. Sem problema: a análise continua disponível, com limite de uso por IP.",
+      // faq
+      "faq.title": "Perguntas frequentes",
+      "faq.q1": "A análise é realmente grátis?",
+      "faq.a1": "Sim. Você vê seu diagnóstico inicial antes de decidir se deseja desbloquear o conteúdo completo.",
+      "faq.q2": "Preciso criar uma conta?",
+      "faq.a2": "Não. Nenhum cadastro é necessário.",
+      "faq.q3": "O MatchVaga garante entrevista?",
+      "faq.a3": "Não. O MatchVaga ajuda a identificar diferenças entre o currículo e os requisitos da vaga e sugere melhorias.",
+      "faq.q4": "O pagamento é recorrente?",
+      "faq.a4": "Não. É um pagamento único para aquela análise.",
+      "faq.q5": "O MatchVaga inventa experiências?",
+      "faq.a5": "Não. As sugestões utilizam somente informações reais fornecidas por você.",
+      "faq.q6": "O que acontece com meu currículo?",
+      "faq.a6": "O texto do seu currículo é usado apenas para gerar sua análise, fica armazenado temporariamente na infraestrutura da Cloudflare e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.",
+      // footer
+      "footer.privacy": "Aviso de privacidade: seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.",
+      "footer.privacyBody": "seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.",
+      // dashboard
+      "dash.title": "MatchVaga · Funil de conversão",
+      "dash.funnel": "Funil",
+      "dash.table": "Tabela de conversão",
+      "dash.sub": "Onde os usuários estão abandonando?",
+      "dash.today": "Hoje",
+      "dash.d7": "7 dias",
+      "dash.d30": "30 dias",
+      "dash.all": "Todo período",
+      "dash.kVisitas": "Visitas",
+      "dash.kAnalises": "Análises",
+      "dash.kUnlock": "Unlock",
+      "dash.kCheckout": "Checkout",
+      "dash.kVendas": "Vendas",
+      "dash.kConv": "Conversão",
+      "dash.kReceita": "Receita",
+      "dash.fLanding": "Visitantes",
+      "dash.fStarted": "Análises iniciadas",
+      "dash.fCompleted": "Análises concluídas",
+      "dash.fResult": "Resultados vistos",
+      "dash.fInsights": "Insights bloqueados vistos",
+      "dash.fUnlock": "Clique para desbloquear",
+      "dash.fCheckout": "Checkout iniciado",
+      "dash.fPaid": "Pagamentos",
+      "dash.fReport": "Relatório completo visto",
+      "dash.thStage": "Etapa",
+      "dash.thQty": "Quantidade",
+      "dash.thPrev": "Conv. anterior",
+      "dash.thTotal": "Conv. total",
+      "dash.thDrop": "Drop p/ próxima",
+      "dash.updated": "Período: {label} · atualizado {time} · dia de referência {day}",
+      "dash.periodLabel0": "todo período",
+      "dash.periodLabel1": "hoje",
+      "dash.periodLabelN": "últimos {n} dias",
+      "dash.loading": "carregando…",
+      "dash.failed": "falha ao carregar: {msg}",
+      "dash.denied": "Acesso negado — falta a chave (?key=…).",
+      "dash.noData": "ainda sem dados suficientes",
+      "dash.footer1": "Dados do Cloudflare KV ({code}): chaves diárias {code2} (TTL 31 dias) e totais {code3} · fonte {code4} · atualização a cada 30s.",
+      "dash.footer2": "Eventos vs. únicos: {code1}, {code2}, {code3}, {code4}, {code5}, {code6} são contagens de eventos (refresh/retry podem inflar). {code7} é 1 por análise (sessão reutilizada via guard {code8}) e {code9} é 1 por venda (idempotente via guard {code10} — webhook reentregue não conta 2×). Receita = vendas × R$ 9,90."
+    },
+    en: {
+      "lang.name": "English",
+      "hero.title": "Is your résumé showing that you fit this job?",
+      "hero.sub": "Compare your résumé with the job requirements and see what is well demonstrated — and what may be going unnoticed.",
+      "hero.cta": "Analyze my résumé",
+      "hero.note": "Free to analyze · No sign-up",
+      "form.title": "Compare with the job",
+      "form.cv": "Résumé",
+      "form.upload": "Upload PDF or DOCX",
+      "form.uploadHint": "click to choose the file",
+      "form.remove": "Remove",
+      "form.privacy": "🔒 Your résumé is used only to run this analysis.",
+      "form.pasteToggle": "Prefer to paste your résumé text?",
+      "form.cvPlaceholder": "Paste your résumé text here...",
+      "form.job": "Job description",
+      "form.jobPlaceholder": "Paste the job description here",
+      "form.analyze": "Check compatibility →",
+      "load.reading": "Reading résumé",
+      "load.requirements": "Identifying job requirements",
+      "load.comparing": "Comparing experiences",
+      "load.finishing": "Finishing your report...",
+      "live.confirming": "Confirming payment",
+      "live.generating": "Generating your full report",
+      "load.fileReading": "Reading file...",
+      "load.fileLoaded": "Résumé loaded",
+      "load.fileReadOk": "Résumé read ✓ ",
+      "load.fileReadFail": "Could not read the text from this PDF (it may be scanned). Would you prefer to paste the text manually?",
+      "load.fileFail": "Could not read the file.",
+      "load.longCv": "Long résumé: we analyzed the first ",
+      "load.longJob": "Long job description: we analyzed the first ",
+      "err.cv": "Upload your résumé (PDF or DOCX) or paste the text.",
+      "err.job": "Paste the job description so we can compare.",
+      "err.analyzeFirst": "Run an analysis first.",
+      "err.generic": "We could not finish your analysis. Please try again.",
+      "err.analysis": "Analysis failed.",
+      "btn.tryAgain": "Try again",
+      "btn.analyzing": "Analyzing...",
+      "result.scoreLabel": "Compatibility with the job",
+      "result.scoreTipAria": "What the score means",
+      "result.scoreTip": "The score compares information found in your résumé with the requirements identified in the job. It does not predict hiring.",
+      "result.strengths": "What your résumé demonstrates well",
+      "result.attentionTitle": "We found {n} points worth attention",
+      "result.attentionTitle1": "We found 1 point worth attention",
+      "paywall.title": "Your analysis still has {n} points",
+      "paywall.title1": "Your analysis still has 1 point",
+      "paywall.kitTitle": "With the full analysis you get",
+      "paywall.kit1": "✓ evidence for every requirement",
+      "paywall.kit2": "✓ specific recommendations",
+      "paywall.kit3": "✓ rewrite suggestions",
+      "paywall.kit4": "✓ résumé adapted to the job",
+      "paywall.kit5": "✓ message for the recruiter",
+      "paywall.kit6": "✓ interview preparation",
+      "paywall.cta": "View full analysis",
+      "paywall.retry": "Unlock my analysis (already paid)",
+      "paywall.once": "$9.90 · one-time payment",
+      "premium.title": "Full analysis",
+      "premium.compat": "Compatibility",
+      "premium.requirements": "Identified requirements",
+      "premium.thReq": "Requirement",
+      "premium.thSit": "Status",
+      "premium.thEv": "Evidence",
+      "premium.attentionAll": "All points of attention",
+      "premium.rewrites": "Safe rewrites",
+      "premium.badgeCopy": "ready to copy",
+      "premium.opportunities": "Conditional opportunities",
+      "premium.badgeCond": "if you have the experience",
+      "premium.optimized": "Résumé optimized for the job",
+      "premium.optimizedNote": "Optimize ≠ invent: nothing was added beyond what is already in your résumé.",
+      "premium.keywords": "Relevant keywords",
+      "premium.message": "Message for the recruiter",
+      "premium.interview": "Interview preparation",
+      "att.jobAsks": "What the job asks",
+      "att.inCv": "In your résumé",
+      "att.interpretation": "Interpretation",
+      "att.why": "Why it deserves attention",
+      "att.whatToDo": "What to do",
+      "att.original": "Original",
+      "att.safeSuggestion": "Safe suggestion",
+      "att.whyShort": "Why",
+      "unlock.paid": "Payment confirmed. Unlocking your analysis...",
+      "unlock.unlocking": "Unlocking your analysis...",
+      "unlock.notConfirmed": "We could not confirm your payment yet. If you already paid, click below to unlock your analysis.",
+      "unlock.expired": "Your analysis expired. Generate a new one for free.",
+      "unlock.fail": "We could not complete the payment. No charge was confirmed. Please try again.",
+      "unlock.notDone": "Payment not completed. No charge was confirmed. You can try again.",
+      "pay.error": "We could not complete the payment. No charge was confirmed. Please try again.",
+      "refuse.garbage": "Your previous analysis could not be generated correctly (the résumé was not read). Run a new analysis for free — the PDF reader was fixed.",
+      "refuse.incomplete": "Your previous analysis was incomplete (generated before the report fix). Run the analysis again to receive the full kit — it is free.",
+      "extract.unsupported": "Unsupported format. Upload a PDF or DOCX.",
+      "extract.fail": "We could not extract text from this file (it may be scanned or have a complex format). Paste your résumé text below.",
+      "extract.empty": "The file is empty or has no readable text.",
+      "captcha.fallback": "Security verification is unavailable in this browser. No problem: the analysis remains available, with a per-IP usage limit.",
+      "faq.title": "Frequently asked questions",
+      "faq.q1": "Is the analysis really free?",
+      "faq.a1": "Yes. You see your initial diagnosis before deciding whether to unlock the full content.",
+      "faq.q2": "Do I need to create an account?",
+      "faq.a2": "No. No sign-up is required.",
+      "faq.q3": "Does MatchVaga guarantee an interview?",
+      "faq.a3": "No. MatchVaga helps identify differences between your résumé and the job requirements and suggests improvements.",
+      "faq.q4": "Is the payment recurring?",
+      "faq.a4": "No. It is a one-time payment for that analysis.",
+      "faq.q5": "Does MatchVaga invent experiences?",
+      "faq.a5": "No. The suggestions use only real information provided by you.",
+      "faq.q6": "What happens to my résumé?",
+      "faq.a6": "Your résumé text is used only to generate your analysis, is stored temporarily on Cloudflare's infrastructure and is automatically removed after 24 hours. It is not shared with third parties.",
+      "footer.privacy": "Privacy notice: your résumé is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties."
+    },
+    es: {
+      "lang.name": "Español",
+      "hero.title": "¿Tu currículum demuestra que encajas con esta vacante?",
+      "hero.sub": "Compara tu currículum con los requisitos de la vacante y descubre qué está bien demostrado — y qué podría estar pasando desapercibido.",
+      "hero.cta": "Analizar mi currículum",
+      "hero.note": "Gratis para analizar · Sin registro",
+      "form.title": "Compara con la vacante",
+      "form.cv": "Currículum",
+      "form.upload": "Subir PDF o DOCX",
+      "form.uploadHint": "haz clic para elegir el archivo",
+      "form.remove": "Quitar",
+      "form.privacy": "🔒 Tu currículum se usa únicamente para realizar este análisis.",
+      "form.pasteToggle": "¿Prefieres pegar el texto del currículum?",
+      "form.cvPlaceholder": "Pega aquí el texto de tu currículum...",
+      "form.job": "Descripción de la vacante",
+      "form.jobPlaceholder": "Pega aquí la descripción de la vacante",
+      "form.analyze": "Analizar compatibilidad →",
+      "load.reading": "Leyendo currículum",
+      "load.requirements": "Identificando requisitos de la vacante",
+      "load.comparing": "Comparando experiencias",
+      "load.finishing": "Finalizando tu diagnóstico...",
+      "live.confirming": "Confirmando pago",
+      "live.generating": "Generando el análisis completo",
+      "load.fileReading": "Leyendo el archivo...",
+      "load.fileLoaded": "Currículum cargado",
+      "load.fileReadOk": "Currículum leído ✓ ",
+      "load.fileReadFail": "No pudimos leer el texto de este PDF (puede estar escaneado). ¿Prefieres pegar el texto manualmente?",
+      "load.fileFail": "No se pudo leer el archivo.",
+      "load.longCv": "Currículum largo: analizamos los primeros ",
+      "load.longJob": "Vacante larga: analizamos los primeros ",
+      "err.cv": "Sube tu currículum (PDF o DOCX) o pega el texto.",
+      "err.job": "Pega la descripción de la vacante para comparar.",
+      "err.analyzeFirst": "Primero haz un análisis.",
+      "err.generic": "No pudimos completar tu análisis. Inténtalo de nuevo.",
+      "err.analysis": "Error en el análisis.",
+      "btn.tryAgain": "Intentar de nuevo",
+      "btn.analyzing": "Analizando...",
+      "result.scoreLabel": "Compatibilidad con la vacante",
+      "result.scoreTipAria": "Qué significa el puntaje",
+      "result.scoreTip": "El puntaje compara la información encontrada en tu currículum con los requisitos identificados en la vacante. No predice contratación.",
+      "result.strengths": "Lo que tu currículum demuestra bien",
+      "result.attentionTitle": "Encontramos {n} puntos que merecen atención",
+      "result.attentionTitle1": "Encontramos 1 punto que merece atención",
+      "paywall.title": "Tu análisis aún tiene {n} puntos",
+      "paywall.title1": "Tu análisis aún tiene 1 punto",
+      "paywall.kitTitle": "Con el análisis completo recibes",
+      "paywall.kit1": "✓ evidencia de cada requisito",
+      "paywall.kit2": "✓ recomendaciones específicas",
+      "paywall.kit3": "✓ sugerencias de reescritura",
+      "paywall.kit4": "✓ currículum adaptado a la vacante",
+      "paywall.kit5": "✓ mensaje para el reclutador",
+      "paywall.kit6": "✓ preparación para la entrevista",
+      "paywall.cta": "Ver análisis completo",
+      "paywall.retry": "Desbloquear mi análisis (ya pagué)",
+      "paywall.once": "$9.90 · pago único",
+      "premium.title": "Análisis completo",
+      "premium.compat": "Compatibilidad",
+      "premium.requirements": "Requisitos identificados",
+      "premium.thReq": "Requisito",
+      "premium.thSit": "Situación",
+      "premium.thEv": "Evidencia",
+      "premium.attentionAll": "Todos los puntos de atención",
+      "premium.rewrites": "Reescrituras seguras",
+      "premium.badgeCopy": "puedes copiar",
+      "premium.opportunities": "Oportunidades condicionales",
+      "premium.badgeCond": "si tienes la experiencia",
+      "premium.optimized": "Currículum optimizado para la vacante",
+      "premium.optimizedNote": "Optimizar ≠ inventar: no se añadió nada más allá de lo que ya está en tu currículum.",
+      "premium.keywords": "Palabras clave relevantes",
+      "premium.message": "Mensaje para el reclutador",
+      "premium.interview": "Preparación para la entrevista",
+      "att.jobAsks": "Lo que pide la vacante",
+      "att.inCv": "En tu currículum",
+      "att.interpretation": "Interpretación",
+      "att.why": "Por qué merece atención",
+      "att.whatToDo": "Qué hacer",
+      "att.original": "Original",
+      "att.safeSuggestion": "Sugerencia segura",
+      "att.whyShort": "Por qué",
+      "unlock.paid": "Pago confirmado. Desbloqueando tu análisis...",
+      "unlock.unlocking": "Desbloqueando tu análisis...",
+      "unlock.notConfirmed": "Todavía no pudimos confirmar tu pago. Si ya pagaste, haz clic abajo para desbloquear tu análisis.",
+      "unlock.expired": "Tu análisis expiró. Genera uno nuevo gratis.",
+      "unlock.fail": "No pudimos completar el pago. No se confirmó ningún cobro. Inténtalo de nuevo.",
+      "unlock.notDone": "Pago no completado. No se confirmó ningún cobro. Puedes intentarlo de nuevo.",
+      "pay.error": "No pudimos completar el pago. No se confirmó ningún cobro. Inténtalo de nuevo.",
+      "refuse.garbage": "Tu análisis anterior no pudo generarse correctamente (no se leyó el currículum). Haz un análisis nuevo gratis: el lector de PDF fue corregido.",
+      "refuse.incomplete": "Tu análisis anterior quedó incompleto (generado antes de la corrección del informe). Vuelve a hacer el análisis para recibir el kit completo — es gratis.",
+      "extract.unsupported": "Formato no compatible. Sube un PDF o DOCX.",
+      "extract.fail": "No pudimos extraer el texto de este archivo (puede estar escaneado o tener un formato complejo). Pega el texto de tu currículum abajo.",
+      "extract.empty": "El archivo está vacío o no tiene texto legible.",
+      "captcha.fallback": "La verificación de seguridad no está disponible en este navegador. Sin problema: el análisis sigue disponible, con límite de uso por IP.",
+      "faq.title": "Preguntas frecuentes",
+      "faq.q1": "¿El análisis es realmente gratis?",
+      "faq.a1": "Sí. Ves tu diagnóstico inicial antes de decidir si desbloqueas el contenido completo.",
+      "faq.q2": "¿Necesito crear una cuenta?",
+      "faq.a2": "No. No se requiere registro.",
+      "faq.q3": "¿MatchVaga garantiza una entrevista?",
+      "faq.a3": "No. MatchVaga ayuda a identificar diferencias entre tu currículum y los requisitos de la vacante, y sugiere mejoras.",
+      "faq.q4": "¿El pago es recurrente?",
+      "faq.a4": "No. Es un pago único por ese análisis.",
+      "faq.q5": "¿MatchVaga inventa experiencias?",
+      "faq.a5": "No. Las sugerencias usan únicamente información real proporcionada por ti.",
+      "faq.q6": "¿Qué pasa con mi currículum?",
+      "faq.a6": "El texto de tu currículum se usa solo para generar tu análisis, se almacena temporalmente en la infraestructura de Cloudflare y se elimina automáticamente después de 24 horas. No se comparte con terceros.",
+      "footer.privacy": "Aviso de privacidad: tu currículum se usa exclusivamente para generar tu análisis, se almacena temporalmente y se elimina automáticamente después de 24 horas. No se comparte con terceros."
+    }
+  };
+
+  function detectLang() {
+    try {
+      const saved = localStorage.getItem("mv-lang");
+      if (saved && L10N[saved]) return saved;
+    } catch {}
+    const nav = (navigator.language || "en").toLowerCase();
+    if (nav.startsWith("pt")) return "pt";
+    if (nav.startsWith("es")) return "es";
+    return "en";
+  }
+
+  let LANG = detectLang();
+
+  window.MV_LANG = LANG;
+  window.t = function (key, vars) {
+    let s = (L10N[LANG] && L10N[LANG][key]) || L10N.pt[key] || key;
+    if (vars) {
+      for (const k in vars) s = s.split("{" + k + "}").join(String(vars[k]));
+    }
+    return s;
+  };
+
+  window.applyI18n = function () {
+    document.documentElement.lang = LANG === "pt" ? "pt-BR" : LANG;
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      el.textContent = window.t(el.getAttribute("data-i18n"));
+    });
+    document.querySelectorAll("[data-i18n-ph]").forEach(el => {
+      el.setAttribute("placeholder", window.t(el.getAttribute("data-i18n-ph")));
+    });
+    document.querySelectorAll("[data-i18n-aria]").forEach(el => {
+      el.setAttribute("aria-label", window.t(el.getAttribute("data-i18n-aria")));
+    });
+    // atualiza o título da página
+    if (document.title && window.t("hero.title") && !document.title.includes("MatchVaga —")) {
+      // mantém apenas se o HTML tiver data-i18n-title
+    }
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute("content", window.t("hero.sub"));
+    const titleEl = document.querySelector("title");
+    if (titleEl && titleEl.hasAttribute("data-i18n")) {
+      titleEl.textContent = window.t(titleEl.getAttribute("data-i18n"));
+    }
+  };
+
+  window.setLang = function (lang) {
+    if (!L10N[lang]) return;
+    LANG = lang;
+    window.MV_LANG = lang;
+    try { localStorage.setItem("mv-lang", lang); } catch {}
+    window.applyI18n();
+    if (typeof window.onLangChanged === "function") window.onLangChanged(lang);
+  };
+
+  window.initLangSelector = function (selId) {
+    const sel = document.getElementById(selId);
+    if (!sel) return;
+    sel.value = LANG;
+    sel.addEventListener("change", () => window.setLang(sel.value));
+  };
+
+  window.__L10N_READY__ = true;
+})();

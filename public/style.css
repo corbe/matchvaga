@@ -27,6 +27,11 @@ body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Robo
 .cta-pay{background:var(--green);font-size:17px}
 .cta-pay:hover{background:var(--green-dark)}
 
+/* ── Seletor de idioma ── */
+.hero-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+.hero-top .eyebrow{margin-bottom:0}
+.lang-sel select{font:inherit;font-size:13.5px;font-weight:700;padding:8px 12px;border:1px solid var(--line);border-radius:99px;background:#fff;color:var(--ink);cursor:pointer}
+
 /* ── Formulário ── */
 .form-title{font-size:20px;font-weight:900;margin-bottom:16px}
 .upload{display:block;cursor:pointer}

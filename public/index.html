@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MatchVaga — Compare seu currículo com a vaga</title>
+  <title data-i18n="hero.title">MatchVaga — Compare seu currículo com a vaga</title>
   <meta name="description" content="Descubra como seu currículo se compara aos requisitos da vaga e veja o que pode melhorar antes de se candidatar.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://matchvaga.kubezen.com/">
@@ -32,42 +32,51 @@
 
     <!-- HERO (ferramenta, não página de vendas) -->
     <header class="hero">
-      <div class="eyebrow">MATCHVAGA</div>
-      <h1>Seu currículo está mostrando que você combina com esta vaga?</h1>
-      <p class="sub">Compare seu currículo com os requisitos da vaga e veja o que está bem demonstrado — e o que pode estar passando despercebido.</p>
-      <a href="#form" class="cta cta-primary">Analisar meu currículo</a>
-      <p class="hero-note">Grátis para analisar · Sem cadastro</p>
+      <div class="hero-top">
+        <div class="eyebrow">MATCHVAGA</div>
+        <label class="lang-sel">
+          <select id="langSel" aria-label="Idioma / Language / Idioma">
+            <option value="pt">🇧🇷 Português</option>
+            <option value="en">🇺🇸 English</option>
+            <option value="es">🇪🇸 Español</option>
+          </select>
+        </label>
+      </div>
+      <h1 data-i18n="hero.title">Seu currículo está mostrando que você combina com esta vaga?</h1>
+      <p class="sub" data-i18n="hero.sub">Compare seu currículo com os requisitos da vaga e veja o que está bem demonstrado — e o que pode estar passando despercebido.</p>
+      <a href="#form" class="cta cta-primary" data-i18n="hero.cta">Analisar meu currículo</a>
+      <p class="hero-note" data-i18n="hero.note">Grátis para analisar · Sem cadastro</p>
     </header>
 
     <!-- FORMULÁRIO -->
     <section id="form" class="panel form-panel">
-      <h2 class="form-title">Compare com a vaga</h2>
+      <h2 class="form-title" data-i18n="form.title">Compare com a vaga</h2>
 
       <label class="field">
-        <span>Currículo</span>
+        <span data-i18n="form.cv">Currículo</span>
         <span class="upload" id="uploadArea">
           <input type="file" id="cvFile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
           <span class="upload-box">
             <span class="upload-icon" aria-hidden="true">📄</span>
-            <span id="uploadText">Enviar PDF ou DOCX</span>
-            <span class="upload-hint">clique para escolher o arquivo</span>
+            <span id="uploadText" data-i18n="form.upload">Enviar PDF ou DOCX</span>
+            <span class="upload-hint" data-i18n="form.uploadHint">clique para escolher o arquivo</span>
           </span>
         </span>
       </label>
-      <p id="fileInfo" class="file-info hidden"><span id="fileName"></span><button type="button" id="removeFile">Remover</button></p>
-      <p class="privacy">🔒 Seu currículo é utilizado para realizar esta análise.</p>
+      <p id="fileInfo" class="file-info hidden"><span id="fileName"></span><button type="button" id="removeFile" data-i18n="form.remove">Remover</button></p>
+      <p class="privacy" data-i18n="form.privacy">🔒 Seu currículo é utilizado para realizar esta análise.</p>
 
       <details class="paste-toggle">
-        <summary>Prefere colar o texto do currículo?</summary>
-        <textarea id="cvText" placeholder="Cole aqui o texto do seu currículo..."></textarea>
+        <summary data-i18n="form.pasteToggle">Prefere colar o texto do currículo?</summary>
+        <textarea id="cvText" data-i18n-ph="form.cvPlaceholder" placeholder="Cole aqui o texto do seu currículo..."></textarea>
       </details>
 
       <label class="field">
-        <span>Descrição da vaga</span>
-        <textarea id="job" rows="6" placeholder="Cole aqui a descrição da vaga"></textarea>
+        <span data-i18n="form.job">Descrição da vaga</span>
+        <textarea id="job" rows="6" data-i18n-ph="form.jobPlaceholder" placeholder="Cole aqui a descrição da vaga"></textarea>
       </label>
 
-      <button id="analyze" class="cta cta-primary" type="button">Analisar compatibilidade →</button>
+      <button id="analyze" class="cta cta-primary" type="button" data-i18n="form.analyze">Analisar compatibilidade →</button>
       <div id="turnstileWidget" class="turnstile"></div>
       <p id="status" class="status" role="alert"></p>
     </section>
@@ -75,20 +84,20 @@
     <!-- LOADING -->
     <section id="loading" class="panel hidden" aria-live="polite">
       <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
-      <p id="loadingMsg" class="loading-msg">Lendo currículo</p>
+      <p id="loadingMsg" class="loading-msg"></p>
     </section>
 
     <!-- RESULTADO -->
     <section id="result" class="panel hidden">
       <div class="score-block">
         <div class="score"><span id="score">0</span><span class="pct">%</span></div>
-        <h2 class="score-label">Compatibilidade com a vaga</h2>
-        <button type="button" class="score-tip" id="scoreTip" aria-label="O que significa o score">ⓘ</button>
+        <h2 class="score-label" data-i18n="result.scoreLabel">Compatibilidade com a vaga</h2>
+        <button type="button" class="score-tip" id="scoreTip" data-i18n-aria="result.scoreTipAria" aria-label="O que significa o score">ⓘ</button>
       </div>
       <p id="scoreExplanation" class="score-explanation"></p>
 
       <div class="section-block">
-        <h3>O que seu currículo demonstra bem</h3>
+        <h3 data-i18n="result.strengths">O que seu currículo demonstra bem</h3>
         <ul id="strengthsList" class="check-list"></ul>
       </div>
 
@@ -103,75 +112,75 @@
         <h2 id="paywallTitle">Sua análise ainda tem 0 pontos</h2>
         <ul class="locked-list" id="lockedInsights"></ul>
         <div class="kit">
-          <h3>Na análise completa você recebe</h3>
+          <h3 data-i18n="paywall.kitTitle">Na análise completa você recebe</h3>
           <ul>
-            <li>✓ evidência de cada requisito</li>
-            <li>✓ recomendações específicas</li>
-            <li>✓ sugestões de reescrita</li>
-            <li>✓ currículo adaptado à vaga</li>
-            <li>✓ mensagem para recrutador</li>
-            <li>✓ preparação para entrevista</li>
+            <li data-i18n="paywall.kit1">✓ evidência de cada requisito</li>
+            <li data-i18n="paywall.kit2">✓ recomendações específicas</li>
+            <li data-i18n="paywall.kit3">✓ sugestões de reescrita</li>
+            <li data-i18n="paywall.kit4">✓ currículo adaptado à vaga</li>
+            <li data-i18n="paywall.kit5">✓ mensagem para recrutador</li>
+            <li data-i18n="paywall.kit6">✓ preparação para entrevista</li>
           </ul>
         </div>
-        <button id="pay" class="cta cta-pay" type="button">Ver análise completa</button>
-        <button id="retryUnlock" class="cta hidden" type="button">Liberar minha análise (já paguei)</button>
-        <p class="once">R$ 9,90 · pagamento único</p>
+        <button id="pay" class="cta cta-pay" type="button" data-i18n="paywall.cta">Ver análise completa</button>
+        <button id="retryUnlock" class="cta hidden" type="button" data-i18n="paywall.retry">Liberar minha análise (já paguei)</button>
+        <p class="once" data-i18n="paywall.once">R$ 9,90 · pagamento único</p>
         <p id="payError" class="error" role="alert"></p>
       </div>
 
       <!-- RELATÓRIO COMPLETO (PAGO = SOLUÇÃO) -->
       <section id="premium" class="premium hidden">
-        <h2 class="premium-title">Análise completa</h2>
+        <h2 class="premium-title" data-i18n="premium.title">Análise completa</h2>
 
         <div class="card">
-          <h3>Compatibilidade</h3>
+          <h3 data-i18n="premium.compat">Compatibilidade</h3>
           <p class="p-score"><span id="pScore">0</span>%</p>
           <p id="pScoreExplanation"></p>
         </div>
 
         <div class="card">
-          <h3>Requisitos identificados</h3>
+          <h3 data-i18n="premium.requirements">Requisitos identificados</h3>
           <div class="table-wrap">
             <table id="reqTable">
-              <thead><tr><th>Requisito</th><th>Situação</th><th>Evidência</th></tr></thead>
+              <thead><tr><th data-i18n="premium.thReq">Requisito</th><th data-i18n="premium.thSit">Situação</th><th data-i18n="premium.thEv">Evidência</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
         </div>
 
         <div class="card">
-          <h3>Todos os pontos de atenção</h3>
+          <h3 data-i18n="premium.attentionAll">Todos os pontos de atenção</h3>
           <div id="pAttention"></div>
         </div>
 
         <div class="card">
-          <h3>Reescritas seguras <span class="badge">pode copiar</span></h3>
+          <h3><span data-i18n="premium.rewrites">Reescritas seguras</span> <span class="badge" data-i18n="premium.badgeCopy">pode copiar</span></h3>
           <div id="pRewrites"></div>
         </div>
 
         <div class="card">
-          <h3>Oportunidades condicionais <span class="badge badge-amber">se você possui a experiência</span></h3>
+          <h3><span data-i18n="premium.opportunities">Oportunidades condicionais</span> <span class="badge badge-amber" data-i18n="premium.badgeCond">se você possui a experiência</span></h3>
           <ul id="pRecommendations" class="rec-list"></ul>
         </div>
 
         <div class="card">
-          <h3>Currículo otimizado para a vaga</h3>
+          <h3 data-i18n="premium.optimized">Currículo otimizado para a vaga</h3>
           <pre id="pOptimized"></pre>
-          <p class="note">Otimizar ≠ inventar: nada foi adicionado além do que já está no seu currículo.</p>
+          <p class="note" data-i18n="premium.optimizedNote">Otimizar ≠ inventar: nada foi adicionado além do que já está no seu currículo.</p>
         </div>
 
         <div class="card">
-          <h3>Palavras-chave relevantes</h3>
+          <h3 data-i18n="premium.keywords">Palavras-chave relevantes</h3>
           <div id="pKeywords" class="chips"></div>
         </div>
 
         <div class="card">
-          <h3>Mensagem para o recrutador</h3>
+          <h3 data-i18n="premium.message">Mensagem para o recrutador</h3>
           <pre id="pMessage"></pre>
         </div>
 
         <div class="card">
-          <h3>Preparação para entrevista</h3>
+          <h3 data-i18n="premium.interview">Preparação para entrevista</h3>
           <ul id="pQuestions"></ul>
         </div>
       </section>
@@ -179,34 +188,35 @@
 
     <!-- FAQ -->
     <section class="panel faq">
-      <h2>Perguntas frequentes</h2>
-      <details class="faq-item"><summary>A análise é realmente grátis?</summary>
-        <p>Sim. Você vê seu diagnóstico inicial antes de decidir se deseja desbloquear o conteúdo completo.</p>
+      <h2 data-i18n="faq.title">Perguntas frequentes</h2>
+      <details class="faq-item"><summary data-i18n="faq.q1">A análise é realmente grátis?</summary>
+        <p data-i18n="faq.a1">Sim. Você vê seu diagnóstico inicial antes de decidir se deseja desbloquear o conteúdo completo.</p>
       </details>
-      <details class="faq-item"><summary>Preciso criar uma conta?</summary>
-        <p>Não. Nenhum cadastro é necessário.</p>
+      <details class="faq-item"><summary data-i18n="faq.q2">Preciso criar uma conta?</summary>
+        <p data-i18n="faq.a2">Não. Nenhum cadastro é necessário.</p>
       </details>
-      <details class="faq-item"><summary>O MatchVaga garante entrevista?</summary>
-        <p>Não. O MatchVaga ajuda a identificar diferenças entre o currículo e os requisitos da vaga e sugere melhorias.</p>
+      <details class="faq-item"><summary data-i18n="faq.q3">O MatchVaga garante entrevista?</summary>
+        <p data-i18n="faq.a3">Não. O MatchVaga ajuda a identificar diferenças entre o currículo e os requisitos da vaga e sugere melhorias.</p>
       </details>
-      <details class="faq-item"><summary>O pagamento é recorrente?</summary>
-        <p>Não. É um pagamento único para aquela análise.</p>
+      <details class="faq-item"><summary data-i18n="faq.q4">O pagamento é recorrente?</summary>
+        <p data-i18n="faq.a4">Não. É um pagamento único para aquela análise.</p>
       </details>
-      <details class="faq-item"><summary>O MatchVaga inventa experiências?</summary>
-        <p>Não. As sugestões utilizam somente informações reais fornecidas por você.</p>
+      <details class="faq-item"><summary data-i18n="faq.q5">O MatchVaga inventa experiências?</summary>
+        <p data-i18n="faq.a5">Não. As sugestões utilizam somente informações reais fornecidas por você.</p>
       </details>
-      <details class="faq-item"><summary>O que acontece com meu currículo?</summary>
-        <p>O texto do seu currículo é usado apenas para gerar sua análise, fica armazenado temporariamente na infraestrutura da Cloudflare e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.</p>
+      <details class="faq-item"><summary data-i18n="faq.q6">O que acontece com meu currículo?</summary>
+        <p data-i18n="faq.a6">O texto do seu currículo é usado apenas para gerar sua análise, fica armazenado temporariamente na infraestrutura da Cloudflare e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.</p>
       </details>
     </section>
   </main>
 
   <footer class="footer">
-    <p><strong>Aviso de privacidade:</strong> seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.</p>
+    <p><strong data-i18n="footer.privacy">Aviso de privacidade:</strong> <span data-i18n="footer.privacyBody">seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.</span></p>
   </footer>
 
   <script src="/vendor-fflate.js"></script>
+  <script src="/i18n.js?v=1"></script>
   <script src="/extract.js"></script>
-  <script src="/app.js?v=12"></script>
+  <script src="/app.js?v=13"></script>
 </body>
 </html>

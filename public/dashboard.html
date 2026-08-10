@@ -4,42 +4,50 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>MatchVaga · Funil</title>
+<title data-i18n="dash.title">MatchVaga · Funil</title>
 <link rel="stylesheet" href="/dashboard.css">
+<script src="/i18n.js?v=1"></script>
 </head>
 <body>
 <div class="wrap">
-  <h1>MatchVaga · Funil de conversão</h1>
-  <p class="sub">Onde os usuários estão abandonando?</p>
-  <p class="updated" id="updated">carregando…</p>
+  <div class="dash-top">
+  <h1 data-i18n="dash.title">MatchVaga · Funil de conversão</h1>
+  <label class="lang-sel"><select id="langSel" aria-label="Idioma / Language / Idioma">
+    <option value="pt">🇧🇷 Português</option>
+    <option value="en">🇺🇸 English</option>
+    <option value="es">🇪🇸 Español</option>
+  </select></label>
+</div>
+  <p class="sub" data-i18n="dash.sub">Onde os usuários estão abandonando?</p>
+  <p class="updated" id="updated"></p>
 
   <div class="period" id="period">
-    <button data-days="1">Hoje</button>
-    <button data-days="7" class="on">7 dias</button>
-    <button data-days="30">30 dias</button>
-    <button data-days="0">Todo período</button>
+    <button data-days="1" data-i18n="dash.today">Hoje</button>
+    <button data-days="7" class="on" data-i18n="dash.d7">7 dias</button>
+    <button data-days="30" data-i18n="dash.d30">30 dias</button>
+    <button data-days="0" data-i18n="dash.all">Todo período</button>
   </div>
 
   <div class="kpis" id="kpis">
-    <div class="kpi"><div class="lbl">Visitas</div><div class="val" id="kVisitas">–</div></div>
-    <div class="kpi"><div class="lbl">Análises</div><div class="val" id="kAnalises">–</div></div>
-    <div class="kpi"><div class="lbl">Unlock</div><div class="val" id="kUnlock">–</div></div>
-    <div class="kpi"><div class="lbl">Checkout</div><div class="val" id="kCheckout">–</div></div>
-    <div class="kpi"><div class="lbl">Vendas</div><div class="val" id="kVendas">–</div></div>
-    <div class="kpi"><div class="lbl">Conversão</div><div class="val" id="kConv">–</div></div>
-    <div class="kpi"><div class="lbl">Receita</div><div class="val" id="kReceita">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kVisitas">Visitas</div><div class="val" id="kVisitas">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kAnalises">Análises</div><div class="val" id="kAnalises">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kUnlock">Unlock</div><div class="val" id="kUnlock">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kCheckout">Checkout</div><div class="val" id="kCheckout">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kVendas">Vendas</div><div class="val" id="kVendas">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kConv">Conversão</div><div class="val" id="kConv">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kReceita">Receita</div><div class="val" id="kReceita">–</div></div>
   </div>
 
   <div class="card">
-    <h2>Funil</h2>
+    <h2 data-i18n="dash.funnel">Funil</h2>
     <div id="funnel"><div class="empty">carregando…</div></div>
   </div>
 
   <div class="card">
-    <h2>Tabela de conversão</h2>
+    <h2 data-i18n="dash.table">Tabela de conversão</h2>
     <div style="overflow-x:auto">
       <table>
-        <thead><tr><th>Etapa</th><th>Quantidade</th><th>Conv. anterior</th><th>Conv. total</th><th>Drop p/ próxima</th></tr></thead>
+        <thead><tr><th data-i18n="dash.thStage">Etapa</th><th data-i18n="dash.thQty">Quantidade</th><th data-i18n="dash.thPrev">Conv. anterior</th><th data-i18n="dash.thTotal">Conv. total</th><th data-i18n="dash.thDrop">Drop p/ próxima</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>

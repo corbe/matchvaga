@@ -1,16 +1,17 @@
 
 const KEY = new URLSearchParams(location.search).get("key") || "";
 const STAGES = [
-  ["landing_view", "Visitantes"],
-  ["analysis_started", "Análises iniciadas"],
-  ["analysis_completed", "Análises concluídas"],
-  ["result_viewed", "Resultados vistos"],
-  ["locked_insights_viewed", "Insights bloqueados vistos"],
-  ["unlock_clicked", "Clique para desbloquear"],
-  ["checkout_started", "Checkout iniciado"],
-  ["payment_completed", "Pagamentos"],
-  ["full_report_viewed", "Relatório completo visto"]
+  ["landing_view", "dash.fLanding"],
+  ["analysis_started", "dash.fStarted"],
+  ["analysis_completed", "dash.fCompleted"],
+  ["result_viewed", "dash.fResult"],
+  ["locked_insights_viewed", "dash.fInsights"],
+  ["unlock_clicked", "dash.fUnlock"],
+  ["checkout_started", "dash.fCheckout"],
+  ["payment_completed", "dash.fPaid"],
+  ["full_report_viewed", "dash.fReport"]
 ];
+const st = key => window.t ? window.t(key) : key;
 let DAYS = 7;
 
 const fmt = n => (n || 0).toLocaleString("pt-BR");
@@ -20,15 +21,14 @@ const cls = r => r >= 60 ? "hot" : r >= 25 ? "mid" : "cold";
 async function load() {
   try {
     const res = await fetch("/api/stats?days=" + DAYS + (KEY ? "&key=" + encodeURIComponent(KEY) : ""), { headers: { "cache-control": "no-cache" } });
-    if (res.status === 403) { document.getElementById("updated").textContent = "Acesso negado — falta a chave (?key=…)."; return; }
+    if (res.status === 403) { document.getElementById("updated").textContent = window.t ? window.t("dash.denied") : "Acesso negado"; return; }
     const d = await res.json();
     const w = d.window || {};
     const t = d.total || {};
     const conv = d.conv || {};
 
-    const label = DAYS === 0 ? "todo período" : DAYS === 1 ? "hoje" : "últimos " + DAYS + " dias";
-    document.getElementById("updated").textContent =
-      "Período: " + label + " · atualizado " + new Date().toLocaleTimeString("pt-BR") + " · dia de referência " + (d.day || "");
+    const label = window.t ? (DAYS === 0 ? window.t("dash.periodLabel0") : DAYS === 1 ? window.t("dash.periodLabel1") : window.t("dash.periodLabelN", { n: DAYS })) : ("dias=" + DAYS);
+    document.getElementById("updated").textContent = window.t ? window.t("dash.updated", { label: label, time: new Date().toLocaleTimeString(navigator.language || "pt-BR"), day: d.day || "" }) : "Período: " + label + " · " + (d.day || "");
 
     document.getElementById("kVisitas").textContent = fmt(w.landing_view);
     document.getElementById("kAnalises").textContent = fmt(w.analysis_completed);
@@ -48,7 +48,7 @@ async function load() {
       const r = pct(count, base);
       const row = document.createElement("div");
       row.className = "frow";
-      row.innerHTML = `<div class="name">${name}</div>` +
+      row.innerHTML = `<div class="name">${st(name)}</div>` +
         `<div class="track"><i style="width:${Math.max(1, Math.min(100, Math.round((count / base) * 100)))}%"></i></div>` +
         `<div class="count">${fmt(count)}</div>` +
         `<div class="pct">${r === null ? "–" : r + "%"}</div>`;
@@ -70,7 +70,7 @@ async function load() {
         dropHtml = `<span class="${drop > 60 ? "drop-bad" : "drop-ok"}">${drop}%</span>`;
       }
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td><b>${name}</b><br><span style="color:var(--faint);font-size:11px">${key}</span></td>` +
+      tr.innerHTML = `<td><b>${st(name)}</b><br><span style="color:var(--faint);font-size:11px">${key}</span></td>` +
         `<td><b>${fmt(count)}</b></td>` +
         `<td class="${convPrev === null ? "" : cls(convPrev)}">${convPrev === null ? "—" : convPrev + "%"}</td>` +
         `<td class="${convTotal === null ? "" : cls(convTotal)}">${convTotal === null ? "—" : convTotal + "%"}</td>` +
@@ -78,7 +78,7 @@ async function load() {
       tb.appendChild(tr);
     });
   } catch (e) {
-    document.getElementById("updated").textContent = "falha ao carregar: " + e.message;
+    document.getElementById("updated").textContent = window.t ? window.t("dash.failed", { msg: e.message }) : ("falha: " + e.message);
   }
 }
 
@@ -90,5 +90,10 @@ document.getElementById("period").addEventListener("click", ev => {
   load();
 });
 
+if (window.initLangSelector) {
+  initLangSelector("langSel");
+  applyI18n();
+  window.onLangChanged = function () { applyI18n(); load(); };
+}
 load();
 setInterval(load, 30000);

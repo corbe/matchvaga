@@ -229,10 +229,10 @@
     } else if (name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       text = extractDocxText(buf);
     } else {
-      throw new Error("Formato não suportado. Envie PDF ou DOCX.");
+      throw new Error(window.t ? window.t("extract.unsupported") : "Formato não suportado. Envie PDF ou DOCX.");
     }
     if (!isReadable(text)) {
-      throw new Error("Não conseguimos extrair o texto deste arquivo (pode ser escaneado ou ter um formato complexo). Cole o texto do currículo abaixo.");
+      throw new Error(window.t ? window.t("extract.fail") : "Não conseguimos extrair o texto deste arquivo (pode ser escaneado ou ter um formato complexo). Cole o texto do currículo abaixo.");
     }
     return text;
   };

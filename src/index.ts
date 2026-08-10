@@ -113,7 +113,7 @@ async function checkAndIncrement(env: Env, key: string, limit: number, ttl: numb
   return next;
 }
 
-async function contentHash(cv: string, job: string): Promise<string> {
+async function contentHash(cv: string, job: string, lang = "pt"): Promise<string> {
   const buf = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(cv + "\u0000" + job)
@@ -246,7 +246,25 @@ function isCompletePremium(p: PremiumResult): boolean {
     (!p.attention || !p.attention.length || typeof p.attention[0]?.interpretation === "string");
 }
 
-async function callOpenAI(env: Env, cv: string, job: string): Promise<PremiumResult> {
+const LANG_NAMES: Record<string, string> = { pt: "Português", en: "English", es: "Español" };
+
+// Mensagens de erro localizadas (mostradas ao usuário).
+const SERVER_MSG: Record<string, Record<string, string>> = {
+  session_expired: { pt: "Sessão expirada. Gere uma nova análise.", en: "Session expired. Generate a new analysis.", es: "Sesión expirada. Genera un nuevo análisis." },
+  analysis_expired: { pt: "Sua análise expirou. Gere uma nova gratuitamente.", en: "Your analysis expired. Generate a new one for free.", es: "Tu análisis expiró. Genera uno nuevo gratis." },
+  unreadable_cv: { pt: "Sua análise não pôde ser gerada corretamente (o currículo não foi lido). Refaça a análise gratuitamente.", en: "Your analysis could not be generated correctly (the résumé was not read). Run a new analysis for free.", es: "Tu análisis no pudo generarse correctamente (no se leyó el currículum). Haz un análisis nuevo gratis." },
+  already_unlocked: { pt: "Esta análise já foi desbloqueada.", en: "This analysis has already been unlocked.", es: "Este análisis ya fue desbloqueado." },
+  text_too_large: { pt: "Texto muito grande para esta versão. Envie um currículo mais resumido.", en: "Text too large for this version. Send a shorter résumé.", es: "Texto demasiado grande para esta versión. Envía un currículum más resumido." },
+  rate_limited: { pt: "Muitas análises neste horário. Aguarde um pouco.", en: "Too many analyses in this hour. Please wait a bit.", es: "Demasiados análisis en esta hora. Espera un poco." },
+  invalid_code: { pt: "Código de liberação inválido.", en: "Invalid unlock code.", es: "Código de desbloqueo inválido." },
+  payment_failed: { pt: "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.", en: "We could not complete the payment. No charge was confirmed. Please try again.", es: "No pudimos completar el pago. No se confirmó ningún cobro. Inténtalo de nuevo." }
+};
+const smsg = (lang: string, key: string): string => {
+  const l = lang === "en" || lang === "es" ? lang : "pt";
+  return (SERVER_MSG[key] && SERVER_MSG[key][l]) || SERVER_MSG[key].pt;
+};
+
+async function callOpenAI(env: Env, cv: string, job: string, lang = "pt"): Promise<PremiumResult> {
   // Limita o tamanho dos inputs: currículo/vaga gigantes não agregam à análise
   // e atrasam a geração — o principal motivo de timeout com pastes reais.
   const MAX_CV = 3000;
@@ -300,6 +318,8 @@ REGRAS ADICIONAIS:
 - keywords: no máximo 8.
 - optimized_cv: máximo 1200 caracteres.
 - interview_questions: no máximo 4.
+IDIOMA: escreva TODOS os textos da resposta (score_explanation, requirements, table, strengths, attention, rewrites, recommendations, keywords, optimized_cv, recruiter_message, interview_questions) no idioma: ${LANG_NAMES[lang] || "Português"}.
+
 CRÍTICO: a resposta JSON inteira deve ter no máximo 2200 caracteres. Se o
 currículo for extenso, priorize o essencial. NUNCA deixe o JSON incompleto.
 
@@ -500,14 +520,15 @@ async function handleCheckout(request: Request, env: Env) {
     return json({ error: "Requisição inválida." }, 400);
   }
 
+  const lang = String(body?.lang || "pt").slice(0, 2);
   const token = String(body?.token || "");
   if (!/^[0-9a-f]{48}$/.test(token)) {
-    return json({ error: "Sessão expirada. Gere uma nova análise." }, 400);
+    return json({ error: smsg(lang, "session_expired") }, 400);
   }
 
   const raw = await env.RESULTS.get(`result:${token}`);
   if (!raw) {
-    return json({ error: "Sua análise expirou. Gere uma nova gratuitamente." }, 404);
+    return json({ error: smsg(lang, "analysis_expired") }, 404);
   }
 
   // NÃO deixa pagar por análise-lixo: se o currículo não pôde ser lido, o
@@ -524,12 +545,12 @@ async function handleCheckout(request: Request, env: Env) {
      !(premium.rewrites && premium.rewrites.length));
   if (isGarbage) {
     await env.RESULTS.delete(`result:${token}`).catch(() => {});
-    return json({ error: "Sua análise não pôde ser gerada corretamente (o currículo não foi lido). Refaça a análise gratuitamente." }, 422);
+    return json({ error: smsg(lang, "unreadable_cv") }, 422);
   }
 
   // Evita pagamento duplicado: se já desbloqueou, não deixa pagar de novo.
   if ((await env.RESULTS.get(`paid:${token}`)) === "1") {
-    return json({ error: "Esta análise já foi desbloqueada." }, 409);
+    return json({ error: smsg(lang, "already_unlocked") }, 409);
   }
 
   // Renova o prazo da análise (24h a partir do início do pagamento), para o
@@ -566,7 +587,7 @@ async function handleCheckout(request: Request, env: Env) {
   const data: any = await res.json();
   if (!res.ok || !data?.url) {
     console.error("Stripe error", res.status, JSON.stringify(data));
-    return json({ error: "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente." }, 502);
+    return json({ error: smsg(lang, "payment_failed") }, 502);
   }
   await env.RESULTS.put(`ck:${token}`, data.url, { expirationTtl: RESULT_TTL });
   await bump(env, "checkout_started");
@@ -681,6 +702,7 @@ async function handlePreview(request: Request, env: Env) {
     return json({ error: "Requisição inválida." }, 400);
   }
 
+  const lang = String(body?.lang || "pt").slice(0, 2);
   const cv = String(body?.cv || "").trim();
   const job = String(body?.job || "").trim();
 
@@ -691,7 +713,7 @@ async function handlePreview(request: Request, env: Env) {
     return json({ error: "Cole a descrição da vaga completa." }, 400);
   }
   if (cv.length > 10000 || job.length > 5000) {
-    return json({ error: "Texto muito grande para esta versão. Envie um currículo mais resumido." }, 413);
+    return json({ error: smsg(lang, "text_too_large") }, 413);
   }
 
   // Anti-bot: exige Turnstile válido QUANDO o token vem preenchido.
@@ -722,12 +744,12 @@ async function handlePreview(request: Request, env: Env) {
     // 2) Rate limit por IP/hora: impede que um único abusador queime tudo.
     const perHourLimit = parseNum(env.RATE_LIMIT_PER_HOUR) || 3;
     if ((await checkAndIncrement(env, `rl:${clientIp(request)}:${hour}`, perHourLimit, 3700)) === null) {
-      return json({ error: "Muitas análises neste horário. Aguarde um pouco." }, 429);
+      return json({ error: smsg(lang, "rate_limited") }, 429);
     }
 
     // 3) Cache por hash: análises idênticas repetidas não gastam créditos de novo.
     // Cache incompleto (IA cortou campos longos) NÃO é reaproveitado.
-    const hash = await contentHash(cv, job);
+    const hash = await contentHash(cv, job, lang);
     const cachedRaw = await env.RESULTS.get(`cache:${hash}`);
     let cached: PremiumResult | null = null;
     if (cachedRaw) {
@@ -739,7 +761,7 @@ async function handlePreview(request: Request, env: Env) {
         await env.RESULTS.delete(`cache:${hash}`).catch(() => {});
       }
     }
-    const premium: PremiumResult = cached ?? (await callOpenAI(env, cv, job));
+    const premium: PremiumResult = cached ?? (await callOpenAI(env, cv, job, lang));
 
     if (!cached) {
       await env.RESULTS.put(`cache:${hash}`, JSON.stringify(premium), { expirationTtl: 86400 });
@@ -795,6 +817,7 @@ async function handleUnlock(request: Request, env: Env) {
     return json({ error: "Requisição inválida." }, 400);
   }
 
+  const lang = String(body?.lang || "pt").slice(0, 2);
   const token = String(body?.token || "");
   const code = String(body?.code || "").trim();
 
@@ -818,7 +841,7 @@ async function handleUnlock(request: Request, env: Env) {
   // Libera com código manual OU com pagamento Stripe confirmado (código vazio).
   const paid = await env.RESULTS.get(`paid:${token}`);
   if (code !== env.UNLOCK_CODE && paid !== "1") {
-    return json({ error: "Código de liberação inválido." }, 403);
+    return json({ error: smsg(lang, "invalid_code") }, 403);
   }
 
   const raw = await env.RESULTS.get(`result:${token}`);

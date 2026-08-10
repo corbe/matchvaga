@@ -79,7 +79,7 @@ function isIncompletePremium(p) {
 function refuseGarbage() {
   sessionStorage.removeItem("mv-token");
   sessionStorage.removeItem("mv-pending");
-  $("status").textContent = "Sua análise anterior não pôde ser gerada corretamente (o currículo não foi lido). Refaça a análise gratuitamente — o leitor de PDF foi corrigido.";
+  $("status").textContent = window.t ? window.t("refuse.garbage") : "Sua análise anterior não pôde ser gerada corretamente (o currículo não foi lido). Refaça a análise gratuitamente — o leitor de PDF foi corrigido.";
   $("status").className = "status error";
   $("premium").classList.add("hidden");
   $("paywall").classList.add("hidden");
@@ -89,7 +89,7 @@ function refuseGarbage() {
 function refuseIncomplete() {
   sessionStorage.removeItem("mv-token");
   sessionStorage.removeItem("mv-pending");
-  $("status").textContent = "Sua análise anterior ficou incompleta (gerada antes da correção do relatório). Rode a análise novamente para receber o kit completo — isso é gratuito.";
+  $("status").textContent = window.t ? window.t("refuse.incomplete") : "Sua análise anterior ficou incompleta (gerada antes da correção do relatório). Rode a análise novamente para receber o kit completo — isso é gratuito.";
   $("status").className = "status error";
   $("premium").classList.add("hidden");
   $("paywall").classList.add("hidden");
@@ -103,22 +103,22 @@ $("cvFile").addEventListener("change", async e => {
   track("resume_uploaded");
   $("fileInfo").classList.remove("hidden");
   $("fileName").textContent = file.name;
-  $("uploadText").textContent = "Currículo carregado";
-  showStatus("Lendo o arquivo...", "ok");
+  $("uploadText").textContent = window.t ? window.t("load.fileLoaded") : "Currículo carregado";
+  showStatus(window.t ? window.t("load.fileReading") : "Lendo o arquivo...", "ok");
   try {
     const text = await extractFileText(file);
     if (text.trim().length < 40) {
       cvText = "";
-      showStatus("Não conseguimos ler o texto deste PDF (pode ser escaneado). Prefere colar o texto manualmente?", "error");
+      showStatus(window.t ? window.t("load.fileReadFail") : "Não conseguimos ler o texto deste PDF (pode ser escaneado). Prefere colar o texto manualmente?", "error");
       $("paste-toggle")?.setAttribute("open", "");
     } else {
       cvText = text;
-      showStatus("Currículo lido ✓ " + text.length + " caracteres extraídos.", "ok");
+      showStatus(window.t ? window.t("load.fileReadOk") : "Currículo lido ✓ " + text.length + " caracteres extraídos.", "ok");
     }
   } catch (err) {
     cvText = "";
     // Falha de extração → orienta colar o texto (caminho sempre confiável).
-    const msg = err && err.message ? err.message : "Não foi possível ler o arquivo.";
+    const msg = err && err.message ? err.message : window.t ? window.t("load.fileFail") : "Não foi possível ler o arquivo.";
     showStatus(msg, "error");
     const toggle = document.querySelector(".paste-toggle");
     if (toggle) toggle.setAttribute("open", "");
@@ -134,7 +134,7 @@ $("removeFile").addEventListener("click", () => {
   cvText = "";
   $("cvFile").value = "";
   $("fileInfo").classList.add("hidden");
-  $("uploadText").textContent = "Enviar PDF ou DOCX";
+  $("uploadText").textContent = window.t ? window.t("form.upload") : "Enviar PDF ou DOCX";
   showStatus("", "");
 });
 
@@ -145,10 +145,10 @@ $("job").addEventListener("input", () => {
 
 // ── Análise ──────────────────────────────────────────────────────
 const LOADING_STEPS = [
-  "Lendo currículo",
-  "Identificando requisitos da vaga",
-  "Comparando experiências",
-  "Finalizando seu diagnóstico..."
+  window.t ? window.t("load.reading") : "Lendo currículo",
+  window.t ? window.t("load.requirements") : "Identificando requisitos da vaga",
+  window.t ? window.t("load.comparing") : "Comparando experiências",
+  window.t ? window.t("load.finishing") : "Finalizando seu diagnóstico..."
 ];
 
 function showLoading() {
@@ -177,19 +177,19 @@ async function runAnalysis() {
   showStatus("", "");
 
   if (!cv) {
-    showStatus("Envie seu currículo (PDF ou DOCX) ou cole o texto.", "error");
+    showStatus(window.t ? window.t("err.cv") : "Envie seu currículo (PDF ou DOCX) ou cole o texto.", "error");
     analyzing = false;
     return;
   }
   if (!job) {
-    showStatus("Cole a descrição da vaga para compararmos.", "error");
+    showStatus(window.t ? window.t("err.job") : "Cole a descrição da vaga para compararmos.", "error");
     analyzing = false;
     return;
   }
 
   const btn = $("analyze");
   btn.disabled = true;
-  btn.textContent = "Analisando...";
+  btn.textContent = window.t ? window.t("btn.analyzing") : "Analisando...";
   showLoading();
 
   // Limite de envio: textos gigantes (extração de PDF pode inflar) são
@@ -200,11 +200,11 @@ async function runAnalysis() {
   let jobSend = job;
   if (cvSend.length > MAX_CV_SEND) {
     cvSend = cvSend.slice(0, MAX_CV_SEND);
-    showStatus("Currículo longo: analisamos os primeiros " + MAX_CV_SEND + " caracteres.", "ok");
+    showStatus(window.t ? window.t("load.longCv") : "Currículo longo: analisamos os primeiros " + MAX_CV_SEND + " caracteres.", "ok");
   }
   if (jobSend.length > MAX_JOB_SEND) {
     jobSend = jobSend.slice(0, MAX_JOB_SEND);
-    showStatus("Vaga longa: analisamos os primeiros " + MAX_JOB_SEND + " caracteres.", "ok");
+    showStatus(window.t ? window.t("load.longJob") : "Vaga longa: analisamos os primeiros " + MAX_JOB_SEND + " caracteres.", "ok");
   }
 
   // Rotaciona as mensagens de progresso SEM atrasar a API.
@@ -221,11 +221,11 @@ async function runAnalysis() {
     const response = await fetch("/api/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ cv: cvSend, job: jobSend, turnstile: turnstileToken })
+      body: JSON.stringify({ cv: cvSend, job: jobSend, turnstile: turnstileToken, lang: window.MV_LANG || "pt" })
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || !data) {
-      throw new Error(data && data.error ? data.error : "Falha na análise.");
+      throw new Error(data && data.error ? data.error : window.t ? window.t("err.analysis") : "Falha na análise.");
     }
 
     resultToken = data.token;
@@ -236,7 +236,7 @@ async function runAnalysis() {
     clearInterval(stepTimer);
     hideLoading();
     btn.disabled = false;
-    btn.textContent = "Analisar compatibilidade →";
+    btn.textContent = window.t ? window.t("form.analyze") : "Analisar compatibilidade →";
     if (turnstileWidget) window.turnstile.reset(turnstileWidget);
     analyzing = false;
   }
@@ -260,7 +260,7 @@ function renderResult(data) {
   const first = p.attention_first;
   const locked = p.attention_locked || [];
   const total = p.attention_count || locked.length + (first ? 1 : 0);
-  $("attentionHeading").textContent = `Encontramos ${total} ponto${total > 1 ? "s" : ""} que merece${total > 1 ? "m" : ""} atenção`;
+  $("attentionHeading").textContent = (total === 1 ? window.t("result.attentionTitle1") : window.t("result.attentionTitle", { n: total }));
   clearEl("attentionFirst");
   if (first) $("attentionFirst").appendChild(attentionCard(first, true));
   clearEl("attentionLocked");
@@ -271,7 +271,7 @@ function renderResult(data) {
   });
 
   // Paywall contextual
-  $("paywallTitle").textContent = `Sua análise ainda tem ${locked.length} ponto${locked.length !== 1 ? "s" : ""}`;
+  $("paywallTitle").textContent = (locked.length === 1 ? window.t("paywall.title1") : window.t("paywall.title", { n: locked.length }));
   clearEl("lockedInsights");
   locked.forEach(t => {
     const li = document.createElement("li");
@@ -297,12 +297,12 @@ function attentionCard(a, free) {
   const div = document.createElement("div");
   div.className = "attention-card";
   div.innerHTML = `<strong>⚠ ${esc(a.requirement)}</strong>` +
-    `<div class="attention-part"><span class="lbl">O que a vaga pede</span> ${esc(a.what_we_found)}</div>` +
-    `<div class="attention-part"><span class="lbl">No seu currículo</span> ${esc(a.in_your_cv)}</div>` +
+    `<div class="attention-part"><span class="lbl"${window.t ? window.t("att.jobAsks") : ">O que a vaga pede<"}/span> ${esc(a.what_we_found)}</div>` +
+    `<div class="attention-part"><span class="lbl"${window.t ? window.t("att.inCv") : ">No seu currículo<"}/span> ${esc(a.in_your_cv)}</div>` +
     (free
-      ? (a.interpretation ? `<div class="attention-part interpretation"><span class="lbl">Interpretação</span> ${esc(a.interpretation)}</div>` : "")
-      : (a.why ? `<div class="attention-part"><span class="lbl">Por que merece atenção</span> ${esc(a.why)}</div>` : "") +
-        (a.what_to_do ? `<div class="attention-part what-to-do"><span class="lbl">O que fazer</span> ${esc(a.what_to_do)}</div>` : ""));
+      ? (a.interpretation ? `<div class="attention-part interpretation"><span class="lbl"${window.t ? window.t("att.interpretation") : ">Interpretação<"}/span> ${esc(a.interpretation)}</div>` : "")
+      : (a.why ? `<div class="attention-part"><span class="lbl"${window.t ? window.t("att.why") : ">Por que merece atenção<"}/span> ${esc(a.why)}</div>` : "") +
+        (a.what_to_do ? `<div class="attention-part what-to-do"><span class="lbl"${window.t ? window.t("att.whatToDo") : ">O que fazer<"}/span> ${esc(a.what_to_do)}</div>` : ""));
   return div;
 }
 
@@ -310,10 +310,10 @@ function showFriendlyError(err) {
   const msg = err && err.message ? err.message : "";
   // Mensagens específicas passam; o resto vira o erro amigável genérico.
   const friendly = /já foi desbloqueada|Limite diário|Muitas análises|muito grande/i.test(msg) ? msg
-    : "Não conseguimos concluir sua análise. Tente novamente.";
+    : window.t ? window.t("err.generic") : "Não conseguimos concluir sua análise. Tente novamente.";
   showStatus(friendly, "error");
   const btn = $("analyze");
-  btn.textContent = "Tentar novamente";
+  btn.textContent = window.t ? window.t("btn.tryAgain") : "Tentar novamente";
   btn.disabled = false;
 }
 
@@ -333,11 +333,11 @@ function handleCheckoutReturn() {
     history.replaceState({}, "", location.pathname);
     resultToken = pending.token;
     renderResultFromState(pending);
-    $("status").textContent = "Pagamento confirmado. Liberando sua análise...";
+    $("status").textContent = window.t ? window.t("unlock.paid") : "Pagamento confirmado. Liberando sua análise...";
     pollUnlock();
   } else if (params.get("checkout") === "cancel") {
     history.replaceState({}, "", location.pathname);
-    $("status").textContent = "Pagamento não concluído. Nenhuma cobrança foi confirmada. Você pode tentar novamente.";
+    $("status").textContent = window.t ? window.t("unlock.notDone") : "Pagamento não concluído. Nenhuma cobrança foi confirmada. Você pode tentar novamente.";
   }
 }
 
@@ -355,14 +355,14 @@ function renderResultFromState(pending) {
   const first = pending.attention_first;
   const locked = pending.attention_locked || [];
   const total = pending.attention_count || locked.length + (first ? 1 : 0);
-  $("attentionHeading").textContent = `Encontramos ${total} ponto${total > 1 ? "s" : ""} que merece${total > 1 ? "m" : ""} atenção`;
+  $("attentionHeading").textContent = (total === 1 ? window.t("result.attentionTitle1") : window.t("result.attentionTitle", { n: total }));
   if (first) $("attentionFirst").appendChild(attentionCard(first, true));
   locked.forEach(t => {
     const li = document.createElement("li");
     li.innerHTML = `🔒 <strong>${esc(t)}</strong>`;
     $("attentionLocked").appendChild(li);
   });
-  $("paywallTitle").textContent = pending.paywall_title || "Sua análise ainda tem pontos";
+  $("paywallTitle").textContent = pending.paywall_title || window.t("paywall.title", { n: (pending.attention_locked || []).length });
   clearEl("lockedInsights");
   locked.forEach(t => {
     const li = document.createElement("li");
@@ -377,14 +377,14 @@ let unlockMsgTimer = null;
 
 function startUnlockSpinner() {
   if (unlockMsgTimer) clearInterval(unlockMsgTimer);
-  // Barra ao vivo no topo: "Confirmando pagamento" → "Gerando análise completa..."
+  // Barra ao vivo no topo: window.t ? window.t("live.confirming") : "Confirmando pagamento" → "Gerando análise completa..."
   const t0 = Date.now();
-  const base = "Confirmando pagamento";
+  const base = window.t ? window.t("live.confirming") : "Confirmando pagamento";
   let dots = 0;
   showLive(base + "...");
   unlockMsgTimer = setInterval(() => {
     dots = dots >= 3 ? 0 : dots + 1;
-    const msg = Date.now() - t0 > 8000 ? "Gerando análise completa" : base;
+    const msg = Date.now() - t0 > 8000 ? window.t ? window.t("live.generating") : "Gerando análise completa" : base;
     showLive(msg + ".".repeat(dots));
   }, 500);
 }
@@ -408,7 +408,7 @@ async function pollUnlock() {
       const response = await fetch("/api/unlock", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: resultToken, code: "" })
+        body: JSON.stringify({ token: resultToken, code: "", lang: window.MV_LANG || "pt" })
       });
       const data = await response.json().catch(() => null);
       if (response.ok && data && data.ok) {
@@ -430,12 +430,12 @@ async function pollUnlock() {
       }
       if (response.status === 404) {
         stopUnlockSpinner();
-        $("status").textContent = "Sua análise expirou. Gere uma nova gratuitamente.";
+        $("status").textContent = window.t ? window.t("unlock.expired") : "Sua análise expirou. Gere uma nova gratuitamente.";
         return;
       }
       if (response.status !== 403) {
         stopUnlockSpinner();
-        $("status").textContent = "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
+        $("status").textContent = window.t ? window.t("unlock.fail") : "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
         $("retryUnlock").classList.remove("hidden");
         return;
       }
@@ -447,13 +447,13 @@ async function pollUnlock() {
   stopUnlockSpinner();
   // Pagamento pode ter sido confirmado (webhook) mas o flag ainda não
   // propagou no KV — dá o controle ao usuário em vez de desistir.
-  $("status").textContent = "Ainda não conseguimos confirmar seu pagamento. Se você já pagou, clique abaixo para liberar sua análise.";
+  $("status").textContent = window.t ? window.t("unlock.notConfirmed") : "Ainda não conseguimos confirmar seu pagamento. Se você já pagou, clique abaixo para liberar sua análise.";
   $("retryUnlock").classList.remove("hidden");
 }
 
 $("retryUnlock").addEventListener("click", () => {
   $("retryUnlock").classList.add("hidden");
-  $("status").textContent = "Liberando sua análise...";
+  $("status").textContent = window.t ? window.t("unlock.unlocking") : "Liberando sua análise...";
   pollUnlock();
 });
 
@@ -465,12 +465,12 @@ $("pay").addEventListener("click", async () => {
   track("unlock_clicked");
 
   try {
-    if (!resultToken) throw new Error("Faça uma análise primeiro.");
+    if (!resultToken) throw new Error(window.t ? window.t("err.analyzeFirst") : "Faça uma análise primeiro.");
 
     const response = await fetch("/api/checkout", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: resultToken })
+      body: JSON.stringify({ token: resultToken, lang: window.MV_LANG || "pt" })
     });
     const data = await response.json().catch(() => null);
 
@@ -480,7 +480,7 @@ $("pay").addEventListener("click", async () => {
       return;
     }
     if (!response.ok || !data || !data.url) {
-      throw new Error((data && data.error) || "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.");
+      throw new Error((data && data.error) || window.t ? window.t("unlock.fail") : "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.");
     }
 
     // Guarda o estado para restaurar ao voltar do Stripe.
@@ -509,7 +509,7 @@ $("pay").addEventListener("click", async () => {
 
     location.href = data.url;
   } catch (err) {
-    $("payError").textContent = err && err.message ? err.message : "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
+    $("payError").textContent = err && err.message ? err.message : window.t ? window.t("unlock.fail") : "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
     button.disabled = false;
   }
 });
@@ -519,7 +519,7 @@ async function unlockDirect(token) {
     const res = await fetch("/api/unlock", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token, code: "" })
+      body: JSON.stringify({ token, code: "", lang: window.MV_LANG || "pt" })
     });
     const data = await res.json().catch(() => null);
     if (res.ok && data && data.ok) {
@@ -535,7 +535,7 @@ async function unlockDirect(token) {
       sessionStorage.setItem("mv-token", token);
       renderPremium(data.premium);
     } else {
-      $("payError").textContent = (data && data.error) || "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
+      $("payError").textContent = (data && data.error) || window.t ? window.t("unlock.fail") : "Não foi possível concluir o pagamento. Nenhuma cobrança foi confirmada. Tente novamente.";
     }
   } finally {
     $("pay").disabled = false;
@@ -543,7 +543,9 @@ async function unlockDirect(token) {
 }
 
 // ── Relatório completo ───────────────────────────────────────────
+let lastPremium = null;
 function renderPremium(p) {
+  lastPremium = p;
   $("pScore").textContent = p.score;
   $("pScoreExplanation").textContent = p.score_explanation || "";
 
@@ -565,9 +567,9 @@ function renderPremium(p) {
   (p.rewrites || []).forEach(r => {
     const div = document.createElement("div");
     div.className = "rewrite";
-    div.innerHTML = `<div class="rewrite-orig"><span class="lbl">Original</span>${esc(r.original)}</div>` +
-      `<div class="rewrite-sug"><span class="lbl">Sugestão segura</span>${esc(r.suggestion)}</div>` +
-      (r.why ? `<div class="rewrite-why"><span class="lbl">Por quê</span>${esc(r.why)}</div>` : "");
+    div.innerHTML = `<div class="rewrite-orig"><span class="lbl"${window.t ? window.t("att.original") : ">Original<"}/span>${esc(r.original)}</div>` +
+      `<div class="rewrite-sug"><span class="lbl"${window.t ? window.t("att.safeSuggestion") : ">Sugestão segura<"}/span>${esc(r.suggestion)}</div>` +
+      (r.why ? `<div class="rewrite-why"><span class="lbl"${window.t ? window.t("att.whyShort") : ">Por quê<"}/span>${esc(r.why)}</div>` : "");
     $("pRewrites").appendChild(div);
   });
 
@@ -684,7 +686,7 @@ async function initTurnstile() {
     // Degradação graciosa: sem captcha o usuário NÃO fica bloqueado.
     const msg = document.createElement("p");
     msg.className = "hint small";
-    msg.textContent = "Verificação de segurança indisponível neste navegador. Sem problema: a análise continua disponível, com limite de uso por IP.";
+    msg.textContent = window.t ? window.t("captcha.fallback") : "Verificação de segurança indisponível neste navegador. Sem problema: a análise continua disponível, com limite de uso por IP.";
     $("turnstileWidget").appendChild(msg);
 
     // Diagnóstico oculto: ?tsdiag=1 mostra o estado real do shim na página.
@@ -725,7 +727,7 @@ $("scoreTip").addEventListener("click", () => {
   const tip = $("scoreTip");
   const note = document.createElement("p");
   note.className = "tip-text";
-  note.textContent = "O score compara informações encontradas no currículo com os requisitos identificados na vaga. Ele não prevê contratação.";
+  note.textContent = window.t ? window.t("result.scoreTip") : "O score compara informações encontradas no currículo com os requisitos identificados na vaga. Ele não prevê contratação.";
   if (tip.dataset.open) {
     tip.nextElementSibling && tip.nextElementSibling.classList.contains("tip-text") && tip.nextElementSibling.remove();
     delete tip.dataset.open;
@@ -737,6 +739,23 @@ $("scoreTip").addEventListener("click", () => {
 
 initTurnstile();
 handleCheckoutReturn();
+
+// ── Idioma (i18n) ──
+if (window.initLangSelector) {
+  initLangSelector("langSel");
+  applyI18n();
+  window.onLangChanged = function () {
+    applyI18n();
+    // re-renderiza conteúdo dinâmico visível no idioma novo
+    const pendingRaw = sessionStorage.getItem("mv-pending");
+    if (pendingRaw) {
+      try { renderResultFromState(JSON.parse(pendingRaw)); } catch {}
+    }
+    if (lastPremium && !$("premium").classList.contains("hidden")) {
+      renderPremium(lastPremium);
+    }
+  };
+}
 
 // Auto-recuperação: quem pagou mas o desbloqueio não propagou a tempo volta
 // para a página e o relatório é liberado sozinho (mv-pending guarda o token).
@@ -756,7 +775,7 @@ if (savedToken) {
       const res = await fetch("/api/unlock", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: savedToken, code: "" })
+        body: JSON.stringify({ token: savedToken, code: "", lang: window.MV_LANG || "pt" })
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data && data.ok) {
