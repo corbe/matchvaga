@@ -635,18 +635,18 @@ function clearTurnstileStub() {
 
 const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
-// Carrega a API do Turnstile via tag <script>.
-// NUNCA re-executar via eval: o api.js detecta window.turnstile existente
-// ("Turnstile already has been loaded") e desiste, deixando um objeto vazio.
-// Se a 1ª carga falhar, limpa qualquer shim e tenta UMA 2ª vez (alguns
-// softwares de segurança re-injetam o shim continuamente).
+// Carrega a API do Turnstile via tag <script>, UMA única vez.
+// NUNCA re-executar via eval e NUNCA re-injetar: o api.js detecta
+// window.turnstile existente ("already has been loaded") e desiste. Em
+// máquinas cujo software de segurança injeta um shim indeletável, o captcha
+// não inicializa — degradação graciosa (captcha é opcional, rate limit protege).
 async function loadTurnstileScript() {
   if (window.turnstile && typeof window.turnstile.render === "function") return;
 
   clearTurnstileStub();
   document.querySelectorAll('script[src*="challenges.cloudflare.com/turnstile"]').forEach(s => s.remove());
 
-  const injectScript = () => new Promise(resolve => {
+  await new Promise(resolve => {
     const s = document.createElement("script");
     s.src = TURNSTILE_SRC;
     s.async = true;
@@ -655,17 +655,8 @@ async function loadTurnstileScript() {
     document.head.appendChild(s);
   });
 
-  await injectScript();
-  if (window.turnstile && typeof window.turnstile.render === "function") return;
-
-  // 2ª tentativa com limpeza do shim entre as cargas.
-  clearTurnstileStub();
-  await new Promise(r => setTimeout(r, 800));
-  await injectScript();
-
   if (!(window.turnstile && typeof window.turnstile.render === "function")) {
-    console.warn("[turnstile] script carregado mas API não inicializou (keys: " +
-      (window.turnstile ? Object.keys(window.turnstile).join(",") : "none") + ")");
+    console.warn("[turnstile] API não inicializou (shim de segurança no navegador?)");
     throw new Error("API do Turnstile indisponível no navegador");
   }
 }
