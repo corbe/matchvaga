@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Privacidade — MatchVaga</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <div class="hero-top">
+        <div class="eyebrow">MATCHVAGA</div>
+      </div>
+      <h1>Política de Privacidade</h1>
+      <p class="sub">Atualizada em 10 de agosto de 2026.</p>
+    </header>
+
+    <section class="panel faq">
+      <h2>1. Visão geral</h2>
+      <p>O MatchVaga (disponível em matchvaga.kubezen.com) é uma ferramenta que compara o currículo de um candidato com uma descrição de vaga e gera um diagnóstico de compatibilidade. Esta política explica quais dados são coletados, como são usados e por quanto tempo ficam armazenados.</p>
+
+      <h2>2. Dados que você fornece</h2>
+      <p><strong>Arquivo do currículo:</strong> o arquivo (PDF ou DOCX) é processado <strong>integralmente no seu navegador</strong> e nunca é enviado a nossos servidores. Apenas o <strong>texto extraído</strong> é enviado para gerar a análise.</p>
+      <p><strong>Texto do currículo e descrição da vaga:</strong> enviados à nossa API para gerar o diagnóstico. São armazenados temporariamente na infraestrutura da Cloudflare com expiração automática de até 24 horas e não são compartilhados com terceiros além dos provedores de processamento (Cloudflare Workers KV e a API de inteligência artificial usada para a análise).</p>
+      <p><strong>Dados de pagamento:</strong> o pagamento é processado exclusivamente pela Stripe (stripe.com). Não recebemos, armazenamos ou acessamos os dados completos do seu cartão.</p>
+
+      <h2>3. Dados coletados automaticamente</h2>
+      <p>Coletamos eventos anônimos de uso (páginas visitadas, etapas do funil, idioma escolhido) para medir o desempenho do serviço. Esses eventos não identificam você pessoalmente. Também registramos o endereço IP de forma temporária para controle de abuso (limite de uso por IP), sem associação a outros dados.</p>
+      <p>O navegador armazena localmente (localStorage) sua preferência de idioma e o estado da sua sessão de análise; esses dados ficam no seu dispositivo.</p>
+
+      <h2>4. Compartilhamento</h2>
+      <p>Não vendemos nem alugamos dados. Os dados são processados pelos seguintes provedores, com contratos de proteção de dados:</p>
+      <ul>
+        <li><strong>Cloudflare</strong> — hospedagem, armazenamento temporário (KV) e proteção contra abuso.</li>
+        <li><strong>Provedor de IA</strong> — processamento do texto para gerar a análise.</li>
+        <li><strong>Stripe</strong> — processamento de pagamentos.</li>
+      </ul>
+
+      <h2>5. Retenção</h2>
+      <p>Resultados de análise são removidos automaticamente em até 24 horas (ou 2 horas após a geração, renovadas por até 24 horas após a compra). Eventos agregados de funil são mantidos por 31 dias. Contadores totais são mantidos sem dados pessoais.</p>
+
+      <h2>6. Seus direitos</h2>
+      <p>Você pode solicitar a exclusão de dados associados ao seu uso a qualquer momento, entrando em contato pelo e-mail indicado no rodapé. Como não mantemos cadastro de usuários, a exclusão é feita com base no identificador de sessão da sua análise.</p>
+
+      <h2>7. Contato</h2>
+      <p>Dúvidas sobre esta política: contato@kubezen.com</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p><a href="/privacidade">Privacidade</a> · <a href="/termos">Termos de uso</a> · <a href="/">MatchVaga</a></p>
+  </footer>
+</body>
+</html>

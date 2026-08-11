@@ -18,6 +18,19 @@ const fmt = n => (n || 0).toLocaleString("pt-BR");
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
 const cls = r => r >= 60 ? "hot" : r >= 25 ? "mid" : "cold";
 
+function renderSources(sources) {
+  const body = document.getElementById("sourcesBody");
+  if (!body) return;
+  if (!sources.length) {
+    body.innerHTML = `<tr><td colspan="4" style="color:var(--faint);font-size:12px">${st("dash.noSources")}</td></tr>`;
+    return;
+  }
+  body.innerHTML = sources.map(s => {
+    const conv = s.landings > 0 ? Math.round((s.paid / s.landings) * 100) + "%" : "—";
+    return `<tr><td><b>${s.source}</b></td><td>${s.landings}</td><td>${s.paid}</td><td>${conv}</td></tr>`;
+  }).join("");
+}
+
 async function load() {
   try {
     const res = await fetch("/api/stats?days=" + DAYS + (KEY ? "&key=" + encodeURIComponent(KEY) : ""), { headers: { "cache-control": "no-cache" } });
@@ -40,6 +53,7 @@ async function load() {
     document.getElementById("kReceita").innerHTML = "R$ " + fmt(vendas * 9.9).replace(",", ".") + '<small> (9,90×' + fmt(vendas) + ")</small>";
 
     // Funil: barras proporcionais a landing_view
+    renderSources(d.sources || []);
     const funnel = document.getElementById("funnel");
     funnel.innerHTML = "";
     const base = Math.max(1, w.landing_view || 1);

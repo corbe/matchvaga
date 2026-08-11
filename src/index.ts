@@ -647,6 +647,12 @@ async function handleStripeWebhook(request: Request, env: Env) {
       const already = await env.RESULTS.get(`paid:${token}`);
       if (already !== "1") {
         await env.RESULTS.put(`paid:${token}`, "1", { expirationTtl: RESULT_TTL });
+        const utmSrc = await env.RESULTS.get(`utm:${token}`);
+        if (utmSrc) {
+          const uday = new Date().toISOString().slice(0, 10);
+          await env.RESULTS.put(`ev:utm-paid:${utmSrc}:${uday}`, String((await kvCount(env, `ev:utm-paid:${utmSrc}:${uday}`)) + 1), { expirationTtl: 31 * 86400 });
+          await env.RESULTS.put(`ev:utm-paid:${utmSrc}:total`, String((await kvCount(env, `ev:utm-paid:${utmSrc}:total`)) + 1));
+        }
         console.log(`[stripe] pagamento confirmado para token ${token.slice(0, 8)}…`);
         await bump(env, "payment_completed");
       }
@@ -703,6 +709,7 @@ async function handlePreview(request: Request, env: Env) {
   }
 
   const lang = String(body?.lang || "pt").slice(0, 2);
+  const utmSource = String(body?.utm?.source || "").replace(/[^\w.-]/g, "").slice(0, 40);
   const cv = String(body?.cv || "").trim();
   const job = String(body?.job || "").trim();
 
@@ -769,6 +776,9 @@ async function handlePreview(request: Request, env: Env) {
 
     const token = randomToken();
     await env.RESULTS.put(`result:${token}`, JSON.stringify(premium), { expirationTtl: RESULT_TTL });
+    if (utmSource) {
+      await env.RESULTS.put(`utm:${token}`, utmSource, { expirationTtl: RESULT_TTL });
+    }
 
     await bump(env, "analysis_completed");
 
@@ -869,6 +879,13 @@ async function handleEvent(request: Request, env: Env) {
     return json({ ok: true }); // silencioso sob rate limit
   }
   await bump(env, stage as FunnelStage);
+  // Atribuição de tráfego (UTM) — só contadores por fonte, nunca conteúdo.
+  const utmSource = String(body?.utm?.source || "").replace(/[^\w.-]/g, "").slice(0, 40);
+  if (utmSource && stage === "landing_view") {
+    const day = new Date().toISOString().slice(0, 10);
+    await env.RESULTS.put(`ev:utm:${utmSource}:${day}`, String((await kvCount(env, `ev:utm:${utmSource}:${day}`)) + 1), { expirationTtl: 31 * 86400 });
+    await env.RESULTS.put(`ev:utm:${utmSource}:total`, String((await kvCount(env, `ev:utm:${utmSource}:total`)) + 1));
+  }
   return json({ ok: true });
 }
 
@@ -931,9 +948,67 @@ async function handleStats(env: Env, url: URL) {
     }
     return conv;
   };
+  // Fontes de tráfego (UTM): landings e vendas por fonte no período.
+  const sources: { source: string; landings: number; paid: number }[] = [];
+  try {
+    const srcMap = new Map<string, { landings: number; paid: number }>();
+    const utmKeys = await env.RESULTS.list({ prefix: "ev:utm:" });
+    for (const k of utmKeys.keys) {
+      const parts = k.name.split(":");
+      // ev:utm:<source>:<date|total>
+      if (parts.length < 4) continue;
+      const src = parts[2];
+      const dayPart = parts[3];
+      if (dayPart === "total") continue;
+      if (daysParam > 0 && !dates.includes(dayPart)) continue;
+      const e = srcMap.get(src) || { landings: 0, paid: 0 };
+      e.landings += (await env.RESULTS.get(k.name)) ? 1 : 0;
+      srcMap.set(src, e);
+    }
+    // conte apenas valores (o kvCount seria um get por chave; aqui já fizemos get)
+    const paidKeys = await env.RESULTS.list({ prefix: "ev:utm-paid:" });
+    for (const k of paidKeys.keys) {
+      const parts = k.name.split(":");
+      if (parts.length < 4) continue;
+      const src = parts[2];
+      const dayPart = parts[3];
+      if (dayPart === "total") continue;
+      if (daysParam > 0 && !dates.includes(dayPart)) continue;
+      const e = srcMap.get(src) || { landings: 0, paid: 0 };
+      e.paid += (await env.RESULTS.get(k.name)) ? 1 : 0;
+      srcMap.set(src, e);
+    }
+    // landings reais = valor numérico da chave (não 1 por chave)
+    for (const [src, e] of srcMap) {
+      let lsum = 0;
+      for (const d of dates.length ? dates : [""]) {
+        const v = await env.RESULTS.get(`ev:utm:${src}:${d}`);
+        if (v) lsum += Number(v) || 0;
+      }
+      if (!dates.length) {
+        const v = await env.RESULTS.get(`ev:utm:${src}:total`);
+        if (v) lsum = Number(v) || 0;
+      }
+      let psum = 0;
+      for (const d of dates.length ? dates : [""]) {
+        const v = await env.RESULTS.get(`ev:utm-paid:${src}:${d}`);
+        if (v) psum += Number(v) || 0;
+      }
+      if (!dates.length) {
+        const v = await env.RESULTS.get(`ev:utm-paid:${src}:total`);
+        if (v) psum = Number(v) || 0;
+      }
+      sources.push({ source: src, landings: lsum, paid: psum });
+    }
+    sources.sort((a, b) => b.landings - a.landings);
+  } catch {
+    // fontes são best-effort; nunca quebram o stats
+  }
+
   return json({
     day,
     days: daysParam,
+    sources: sources.slice(0, 20),
     window,
     today,
     total,

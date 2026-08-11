@@ -128,6 +128,13 @@
       "footer.privacyBody": "seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.",
       // dashboard
       "dash.title": "MatchVaga · Funil de conversão",
+      "dash.sourcesTitle": "Fontes de tráfego (UTM)",
+      "dash.thSource": "Fonte",
+      "dash.thLandings": "Visitas",
+      "dash.thPaid": "Vendas",
+      "dash.thSrcConv": "Conv.",
+      "dash.noSources": "sem dados de UTM ainda (adicione ?utm_source=… aos links)",
+
       "dash.funnel": "Funil",
       "dash.table": "Tabela de conversão",
       "dash.sub": "Onde os usuários estão abandonando?",

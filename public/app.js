@@ -8,6 +8,26 @@ const firedEvents = new Set();
 
 const $ = id => document.getElementById(id);
 
+// ── UTM (atribuição de tráfego pago) ─────────────────────────────
+function readUtm() {
+  try {
+    const p = new URLSearchParams(location.search);
+    const src = p.get("utm_source") || p.get("utm_medium") || "";
+    const cam = p.get("utm_campaign") || "";
+    if (!src && !cam) return null;
+    const utm = { source: src.slice(0, 40), campaign: cam.slice(0, 60) };
+    sessionStorage.setItem("mv-utm", JSON.stringify(utm));
+    return utm;
+  } catch { return null; }
+}
+function getUtm() {
+  try {
+    const raw = sessionStorage.getItem("mv-utm");
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+const UTM = readUtm() || getUtm();
+
 // ── Analytics (só contadores agregados — nunca conteúdo) ─────────
 async function track(stage) {
   if (firedEvents.has(stage)) return;
@@ -16,7 +36,7 @@ async function track(stage) {
     await fetch("/api/event", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ stage })
+      body: JSON.stringify({ stage, utm: UTM })
     });
   } catch {
     // analytics nunca deve quebrar o fluxo
@@ -221,7 +241,7 @@ async function runAnalysis() {
     const response = await fetch("/api/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ cv: cvSend, job: jobSend, turnstile: turnstileToken, lang: window.MV_LANG || "pt" })
+      body: JSON.stringify({ cv: cvSend, job: jobSend, turnstile: turnstileToken, lang: window.MV_LANG || "pt", utm: UTM })
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || !data) {
