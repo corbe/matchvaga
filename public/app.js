@@ -316,13 +316,16 @@ function renderResult(data) {
 function attentionCard(a, free) {
   const div = document.createElement("div");
   div.className = "attention-card";
+  // ATENÇÃO: o `<span class="lbl">…</span>` precisa fechar a tag ANTES do conteúdo —
+  // a versão antiga (`class="lbl"${label}/span>`) engolia o label como atributos e o
+  // conteúdo caía DENTRO do span (nextSibling null → quebrava o checkout em produção).
   div.innerHTML = `<strong>⚠ ${esc(a.requirement)}</strong>` +
-    `<div class="attention-part"><span class="lbl"${window.t ? window.t("att.jobAsks") : ">O que a vaga pede<"}/span> ${esc(a.what_we_found)}</div>` +
-    `<div class="attention-part"><span class="lbl"${window.t ? window.t("att.inCv") : ">No seu currículo<"}/span> ${esc(a.in_your_cv)}</div>` +
+    `<div class="attention-part"><span class="lbl">${window.t ? window.t("att.jobAsks") : "O que a vaga pede"}</span> ${esc(a.what_we_found)}</div>` +
+    `<div class="attention-part"><span class="lbl">${window.t ? window.t("att.inCv") : "No seu currículo"}</span> ${esc(a.in_your_cv)}</div>` +
     (free
-      ? (a.interpretation ? `<div class="attention-part interpretation"><span class="lbl"${window.t ? window.t("att.interpretation") : ">Interpretação<"}/span> ${esc(a.interpretation)}</div>` : "")
-      : (a.why ? `<div class="attention-part"><span class="lbl"${window.t ? window.t("att.why") : ">Por que merece atenção<"}/span> ${esc(a.why)}</div>` : "") +
-        (a.what_to_do ? `<div class="attention-part what-to-do"><span class="lbl"${window.t ? window.t("att.whatToDo") : ">O que fazer<"}/span> ${esc(a.what_to_do)}</div>` : ""));
+      ? (a.interpretation ? `<div class="attention-part interpretation"><span class="lbl">${window.t ? window.t("att.interpretation") : "Interpretação"}</span> ${esc(a.interpretation)}</div>` : "")
+      : (a.why ? `<div class="attention-part"><span class="lbl">${window.t ? window.t("att.why") : "Por que merece atenção"}</span> ${esc(a.why)}</div>` : "") +
+        (a.what_to_do ? `<div class="attention-part what-to-do"><span class="lbl">${window.t ? window.t("att.whatToDo") : "O que fazer"}</span> ${esc(a.what_to_do)}</div>` : ""));
   return div;
 }
 
@@ -517,7 +520,14 @@ $("pay").addEventListener("click", async () => {
         if (!card) return null;
         return {
           requirement: card.querySelector("strong").textContent.replace(/^⚠\s*/, ""),
-          what_we_found: card.querySelector(".attention-part .lbl") ? card.querySelector(".attention-part .lbl").nextSibling.textContent.trim() : "",
+          what_we_found: (() => {
+            const part = card.querySelector(".attention-part");
+            if (!part) return "";
+            const lbl = part.querySelector(".lbl");
+            // Não depender de nextSibling (quebrou checkout em produção quando o
+            // label foi engolido como atributo): extrai o texto da part menos o label.
+            return (lbl ? part.textContent.replace(lbl.textContent, "") : part.textContent).trim();
+          })(),
           in_your_cv: "",
           interpretation: card.querySelector(".interpretation") ? card.querySelector(".interpretation").textContent : ""
         };
@@ -587,9 +597,9 @@ function renderPremium(p) {
   (p.rewrites || []).forEach(r => {
     const div = document.createElement("div");
     div.className = "rewrite";
-    div.innerHTML = `<div class="rewrite-orig"><span class="lbl"${window.t ? window.t("att.original") : ">Original<"}/span>${esc(r.original)}</div>` +
-      `<div class="rewrite-sug"><span class="lbl"${window.t ? window.t("att.safeSuggestion") : ">Sugestão segura<"}/span>${esc(r.suggestion)}</div>` +
-      (r.why ? `<div class="rewrite-why"><span class="lbl"${window.t ? window.t("att.whyShort") : ">Por quê<"}/span>${esc(r.why)}</div>` : "");
+    div.innerHTML = `<div class="rewrite-orig"><span class="lbl">${window.t ? window.t("att.original") : "Original"}</span>${esc(r.original)}</div>` +
+      `<div class="rewrite-sug"><span class="lbl">${window.t ? window.t("att.safeSuggestion") : "Sugestão segura"}</span>${esc(r.suggestion)}</div>` +
+      (r.why ? `<div class="rewrite-why"><span class="lbl">${window.t ? window.t("att.whyShort") : "Por quê"}</span>${esc(r.why)}</div>` : "");
     $("pRewrites").appendChild(div);
   });
 
