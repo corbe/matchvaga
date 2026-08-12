@@ -126,6 +126,7 @@ textarea:focus{outline:2px solid #11182722;border-color:var(--ink)}
 .locked-list{list-style:none;margin:16px 0 18px;background:var(--soft);border-radius:12px;padding:14px 16px}
 .locked-list li{padding:6px 0;font-size:15px;font-weight:600;color:#475467}
 .once{text-align:center;font-weight:700;color:var(--muted);font-size:14px;margin-top:10px}
+.pay-note{text-align:center;color:var(--muted);opacity:.85;font-size:12px;margin-top:6px}
 
 /* ── Relatório completo ── */
 .premium-title{font-size:24px;font-weight:950;text-align:center;margin-bottom:4px}

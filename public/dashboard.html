@@ -21,6 +21,13 @@
   <p class="sub" data-i18n="dash.sub">Onde os usuários estão abandonando?</p>
   <p class="updated" id="updated"></p>
 
+  <div class="market" id="market">
+    <span class="market-lbl" data-i18n="dash.mLbl">Mercado:</span>
+    <button data-market="br" data-i18n="dash.mBr">🇧🇷 BR</button>
+    <button data-market="us" data-i18n="dash.mUs">🇺🇸 US</button>
+    <button data-market="all" class="on" data-i18n="dash.mAll">Ambos</button>
+  </div>
+
   <div class="period" id="period">
     <button data-days="1" data-i18n="dash.today">Hoje</button>
     <button data-days="7" class="on" data-i18n="dash.d7">7 dias</button>
@@ -61,9 +68,20 @@
     </div>
   </div>
 
+  <div class="card" id="compareCard">
+    <h2 data-i18n="dash.compareTitle">Experimento: BR vs US</h2>
+    <p class="compare-sub" data-i18n="dash.compareSub">Etapas-chave e conversões por mercado (mesmo período).</p>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th data-i18n="dash.thStage">Etapa</th><th>🇧🇷 BR</th><th>🇺🇸 US</th></tr></thead>
+        <tbody id="compareBody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="footer">
-    Dados do Cloudflare KV (<code>RESULTS</code>): chaves diárias <code>ev:&lt;etapa&gt;:&lt;data&gt;</code> (TTL 31 dias) e totais <code>evt:&lt;etapa&gt;</code> · fonte <code>/api/stats</code> · atualização a cada 30s.<br>
-    <b>Eventos vs. únicos:</b> <code>landing_view</code>, <code>analysis_started/completed</code>, <code>result_viewed</code>, <code>locked_insights_viewed</code>, <code>unlock_clicked</code>, <code>full_report_viewed</code> são <b>contagens de eventos</b> (refresh/retry podem inflar). <code>session_view</code> é <b>1 por sessão de navegador</b> (refresh não repete). <code>checkout_started</code> é <b>1 por análise</b> (sessão reutilizada via guard <code>ck:&lt;token&gt;</code>) e <code>payment_completed</code> é <b>1 por venda</b> (idempotente via guard <code>paid:&lt;token&gt;</code> — webhook reentregue não conta 2×). Receita = vendas × R$ 9,90.
+    Dados do Cloudflare KV (<code>RESULTS</code>): chaves diárias <code>ev:&lt;mercado&gt;:&lt;etapa&gt;:&lt;data&gt;</code> (TTL 31 dias) e totais <code>evt:&lt;mercado&gt;:&lt;etapa&gt;</code> · mercado = <code>br</code> (inclui chaves legadas sem prefixo) ou <code>us</code> · fonte <code>/api/stats</code> · atualização a cada 30s.<br>
+    <b>Eventos vs. únicos:</b> <code>landing_view</code>, <code>analysis_started/completed</code>, <code>result_viewed</code>, <code>locked_insights_viewed</code>, <code>unlock_clicked</code>, <code>full_report_viewed</code> são <b>contagens de eventos</b> (refresh/retry podem inflar). <code>session_view</code> é <b>1 por sessão de navegador</b> (refresh não repete). <code>checkout_started</code> é <b>1 por análise</b> (sessão reutilizada via guard <code>ck:&lt;token&gt;</code>) e <code>payment_completed</code> é <b>1 por venda</b> (idempotente via guard <code>paid:&lt;token&gt;</code> — webhook reentregue não conta 2×). Receita = vendas BR × R$ 9,90 + vendas US × $2,99.
   </div>
 </div>
 <script src="/dashboard.js"></script>

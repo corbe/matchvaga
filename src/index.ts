@@ -4,6 +4,7 @@ interface Env {
   OPENAI_API_KEY: string;
   OPENAI_MODEL?: string;
   PRICE_BRL?: string;
+  PRICE_USD?: string;
   PIX_KEY?: string;
   STATS_KEY?: string; // proteção do dashboard /api/stats (opcional)
   UNLOCK_CODE: string;
@@ -113,10 +114,12 @@ async function checkAndIncrement(env: Env, key: string, limit: number, ttl: numb
   return next;
 }
 
-async function contentHash(cv: string, job: string, lang = "pt"): Promise<string> {
+async function contentHash(cv: string, job: string, lang = "pt", market: Market = "br"): Promise<string> {
+  // lang + market NO hash (correção de bug verificado em produção): sem eles, uma
+  // análise EN cacheada vazava para quem pedia ES — e agora misturaria BR/US.
   const buf = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(cv + "\u0000" + job)
+    new TextEncoder().encode(cv + "\u0000" + job + "\u0000" + lang + "\u0000" + market)
   );
   return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -140,10 +143,34 @@ const FUNNEL_STAGES = [
 ] as const;
 type FunnelStage = (typeof FUNNEL_STAGES)[number];
 
-async function bump(env: Env, stage: FunnelStage) {
+// ── Mercado (experimento BR vs US) ───────────────────────────────
+// Dimensão de mercado em TODOS os contadores: `ev:<mkt>:<etapa>:<dia>`.
+// Chaves legadas SEM prefixo de mercado (pré-12/08) contam como BR na leitura.
+const MARKETS = ["br", "us"] as const;
+type Market = (typeof MARKETS)[number];
+
+function normMarket(raw: unknown): Market {
+  return String(raw || "").toLowerCase().slice(0, 2) === "us" ? "us" : "br";
+}
+
+function marketPrice(env: Env, market: Market): string {
+  return market === "us" ? env.PRICE_USD || "2.99" : env.PRICE_BRL || "9,90";
+}
+
+function marketCurrency(market: Market): string {
+  return market === "us" ? "usd" : "brl";
+}
+
+function marketProductName(market: Market): string {
+  return market === "us"
+    ? "MatchVaga — Kit for this application"
+    : "MatchVaga — Kit para esta candidatura";
+}
+
+async function bump(env: Env, stage: FunnelStage, market: Market = "br") {
   const day = new Date().toISOString().slice(0, 10);
-  const dayKey = `ev:${stage}:${day}`;
-  const totalKey = `evt:${stage}`;
+  const dayKey = `ev:${market}:${stage}:${day}`;
+  const totalKey = `evt:${market}:${stage}`;
   const [dayCount, totalCount] = await Promise.all([kvCount(env, dayKey), kvCount(env, totalKey)]);
   await env.RESULTS.put(dayKey, String(dayCount + 1), { expirationTtl: 86400 * 31 });
   await env.RESULTS.put(totalKey, String(totalCount + 1));
@@ -265,7 +292,7 @@ const smsg = (lang: string, key: string): string => {
   return (SERVER_MSG[key] && SERVER_MSG[key][l]) || SERVER_MSG[key].pt;
 };
 
-async function callOpenAI(env: Env, cv: string, job: string, lang = "pt"): Promise<PremiumResult> {
+async function callOpenAI(env: Env, cv: string, job: string, lang = "pt", market: Market = "br"): Promise<PremiumResult> {
   // Limita o tamanho dos inputs: currículo/vaga gigantes não agregam à análise
   // e atrasam a geração — o principal motivo de timeout com pastes reais.
   const MAX_CV = 3000;
@@ -277,7 +304,9 @@ async function callOpenAI(env: Env, cv: string, job: string, lang = "pt"): Promi
  Compare rigorosamente o currículo com a vaga.
 
 IDIOMA DA RESPOSTA: escreva TODOS os textos da resposta (score_explanation, requirements, table, strengths, attention, rewrites, recommendations, keywords, optimized_cv, recruiter_message, interview_questions) no idioma: ${LANG_NAMES[lang] || "Português"}. Isso é obrigatório.
-
+${market === "us"
+    ? "\nTERMINOLOGIA (mercado americano): use inglês americano natural — 'resume' (NUNCA 'CV'), 'job description', 'job requirements', 'hiring manager', 'Applicant Tracking System (ATS)', 'apply'. Os textos devem soar como escritos por um candidato nativo dos EUA.\n"
+    : ""}
 REGRAS DE INTEGRIDADE (obrigatórias):
 - NUNCA invente experiência, empresa, cargo, tecnologia, certificação ou resultado.
 - "Não encontrado no currículo" NÃO significa "o candidato não possui": quando um requisito da vaga não aparecer no currículo, diga que NÃO FOI ENCONTRADO no currículo, nunca que o candidato não tem a experiência.
@@ -501,10 +530,18 @@ async function verifyTurnstile(env: Env, token: string, ip: string): Promise<boo
 }
 
 // ── Stripe (pagamento) ───────────────────────────────────────────
-// Converte "9,90" → 990 (centavos).
-function brlToCents(price: string): number {
-  const n = Number(String(price).replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(n) ? Math.round(n * 100) : 990;
+// Converte preço decimal → centavos. Aceita os DOIS formatos:
+// BR "9,90" (vírgula decimal, ponto = milhar) e US "2.99" (ponto decimal).
+// Atenção (bug verificado em teste 12/08): remover TODOS os pontos quebrava
+// "2.99" → 29900 ($299,00). Só mexe no separador quando há vírgula.
+function priceToCents(price: string): number {
+  let s = String(price).trim();
+  if (s.includes(",")) {
+    // formato BR: "9,90" ou "1.234,56"
+    s = s.replace(/\./g, "").replace(",", ".");
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
 
 const RESULT_TTL = 86400; // análise fica disponível 24h (tempo para pagar)
@@ -526,7 +563,10 @@ async function handleCheckout(request: Request, env: Env) {
   if (!/^[0-9a-f]{48}$/.test(token)) {
     return json({ error: smsg(lang, "session_expired") }, 400);
   }
-
+  // Mercado do token vem do servidor (fixado na criação da análise). O market
+  // do body é só fallback p/ tokens legados (criados antes do mkt:<token>).
+  const storedMarket = await env.RESULTS.get(`mkt:${token}`);
+  const market = normMarket(storedMarket || body?.market);
   const raw = await env.RESULTS.get(`result:${token}`);
   if (!raw) {
     return json({ error: smsg(lang, "analysis_expired") }, 404);
@@ -566,15 +606,19 @@ async function handleCheckout(request: Request, env: Env) {
   }
 
   const origin = request.headers.get("origin") || `https://${request.headers.get("host") || "matchvaga.kubezen.com"}`;
+  // Retorno do Stripe vai para o MESMO mercado (US volta para /us — se voltasse
+  // para /, o usuário caía na página PT e a atribuição do relatório vazava).
+  const returnPath = market === "us" ? "/us" : "/";
   const form = new URLSearchParams();
   form.set("mode", "payment");
-  form.set("success_url", `${origin}/?checkout=success`);
-  form.set("cancel_url", `${origin}/?checkout=cancel`);
+  form.set("success_url", `${origin}${returnPath}?checkout=success`);
+  form.set("cancel_url", `${origin}${returnPath}?checkout=cancel`);
   form.set("metadata[token]", token);
+  form.set("metadata[market]", market);
   form.set("line_items[0][quantity]", "1");
-  form.set("line_items[0][price_data][currency]", "brl");
-  form.set("line_items[0][price_data][unit_amount]", String(brlToCents(env.PRICE_BRL || "9,90")));
-  form.set("line_items[0][price_data][product_data][name]", "MatchVaga — Kit para esta candidatura");
+  form.set("line_items[0][price_data][currency]", marketCurrency(market));
+  form.set("line_items[0][price_data][unit_amount]", String(priceToCents(marketPrice(env, market))));
+  form.set("line_items[0][price_data][product_data][name]", marketProductName(market));
 
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
@@ -591,7 +635,7 @@ async function handleCheckout(request: Request, env: Env) {
     return json({ error: smsg(lang, "payment_failed") }, 502);
   }
   await env.RESULTS.put(`ck:${token}`, data.url, { expirationTtl: RESULT_TTL });
-  await bump(env, "checkout_started");
+  await bump(env, "checkout_started", market);
   return json({ url: data.url });
 }
 
@@ -643,6 +687,9 @@ async function handleStripeWebhook(request: Request, env: Env) {
   // PIX via Stripe é assíncrono: cobre os dois eventos de sucesso.
   if (type === "checkout.session.completed" || type === "checkout.session.async_payment_succeeded") {
     const token = String(payload?.data?.object?.metadata?.token || "");
+    // Mercado vem do metadata da sessão Stripe (fonte confiável — o cliente
+    // não decide a atribuição da venda depois do pagamento).
+    const market = normMarket(payload?.data?.object?.metadata?.market);
     if (/^[0-9a-f]{48}$/.test(token)) {
       // Idempotente: webhooks do Stripe são reentregues — não conta pagamento 2x.
       const already = await env.RESULTS.get(`paid:${token}`);
@@ -651,11 +698,11 @@ async function handleStripeWebhook(request: Request, env: Env) {
         const utmSrc = await env.RESULTS.get(`utm:${token}`);
         if (utmSrc) {
           const uday = new Date().toISOString().slice(0, 10);
-          await env.RESULTS.put(`ev:utm-paid:${utmSrc}:${uday}`, String((await kvCount(env, `ev:utm-paid:${utmSrc}:${uday}`)) + 1), { expirationTtl: 31 * 86400 });
-          await env.RESULTS.put(`ev:utm-paid:${utmSrc}:total`, String((await kvCount(env, `ev:utm-paid:${utmSrc}:total`)) + 1));
+          await env.RESULTS.put(`ev:utm-paid:${market}:${utmSrc}:${uday}`, String((await kvCount(env, `ev:utm-paid:${market}:${utmSrc}:${uday}`)) + 1), { expirationTtl: 31 * 86400 });
+          await env.RESULTS.put(`ev:utm-paid:${market}:${utmSrc}:total`, String((await kvCount(env, `ev:utm-paid:${market}:${utmSrc}:total`)) + 1));
         }
-        console.log(`[stripe] pagamento confirmado para token ${token.slice(0, 8)}…`);
-        await bump(env, "payment_completed");
+        console.log(`[stripe] pagamento confirmado para token ${token.slice(0, 8)}… (${market})`);
+        await bump(env, "payment_completed", market);
       }
     }
   }
@@ -710,6 +757,9 @@ async function handlePreview(request: Request, env: Env) {
   }
 
   const lang = String(body?.lang || "pt").slice(0, 2);
+  const market = normMarket(body?.market);
+  // "us" nunca chega como lang (o cliente envia "en"); defesa extra:
+  const langClean = lang === "us" ? "en" : lang;
   const utmSource = String(body?.utm?.source || "").replace(/[^\w.-]/g, "").slice(0, 40);
   const cv = String(body?.cv || "").trim();
   const job = String(body?.job || "").trim();
@@ -721,7 +771,7 @@ async function handlePreview(request: Request, env: Env) {
     return json({ error: "Cole a descrição da vaga completa." }, 400);
   }
   if (cv.length > 10000 || job.length > 5000) {
-    return json({ error: smsg(lang, "text_too_large") }, 413);
+    return json({ error: smsg(langClean, "text_too_large") }, 413);
   }
 
   // Anti-bot: exige Turnstile válido QUANDO o token vem preenchido.
@@ -734,7 +784,7 @@ async function handlePreview(request: Request, env: Env) {
     return json({ error: "Verificação anti-bot falhou. Recarregue e tente novamente." }, 400);
   }
 
-  await bump(env, "analysis_started");
+  await bump(env, "analysis_started", market);
 
   try {
     const now = new Date();
@@ -752,12 +802,13 @@ async function handlePreview(request: Request, env: Env) {
     // 2) Rate limit por IP/hora: impede que um único abusador queime tudo.
     const perHourLimit = parseNum(env.RATE_LIMIT_PER_HOUR) || 3;
     if ((await checkAndIncrement(env, `rl:${clientIp(request)}:${hour}`, perHourLimit, 3700)) === null) {
-      return json({ error: smsg(lang, "rate_limited") }, 429);
+      return json({ error: smsg(langClean, "rate_limited") }, 429);
     }
 
     // 3) Cache por hash: análises idênticas repetidas não gastam créditos de novo.
     // Cache incompleto (IA cortou campos longos) NÃO é reaproveitado.
-    const hash = await contentHash(cv, job, lang);
+    // lang + market entram no hash (senão análise EN cacheada vaza para PT/BR).
+    const hash = await contentHash(cv, job, langClean, market);
     const cachedRaw = await env.RESULTS.get(`cache:${hash}`);
     let cached: PremiumResult | null = null;
     if (cachedRaw) {
@@ -769,7 +820,7 @@ async function handlePreview(request: Request, env: Env) {
         await env.RESULTS.delete(`cache:${hash}`).catch(() => {});
       }
     }
-    const premium: PremiumResult = cached ?? (await callOpenAI(env, cv, job, lang));
+    const premium: PremiumResult = cached ?? (await callOpenAI(env, cv, job, langClean, market));
 
     if (!cached) {
       await env.RESULTS.put(`cache:${hash}`, JSON.stringify(premium), { expirationTtl: 86400 });
@@ -777,11 +828,14 @@ async function handlePreview(request: Request, env: Env) {
 
     const token = randomToken();
     await env.RESULTS.put(`result:${token}`, JSON.stringify(premium), { expirationTtl: RESULT_TTL });
+    // Mercado do token fixado no servidor: o checkout usa SEMPRE este valor
+    // (o market do body é só fallback) — evita precificar análise US em BRL.
+    await env.RESULTS.put(`mkt:${token}`, market, { expirationTtl: RESULT_TTL });
     if (utmSource) {
       await env.RESULTS.put(`utm:${token}`, utmSource, { expirationTtl: RESULT_TTL });
     }
 
-    await bump(env, "analysis_completed");
+    await bump(env, "analysis_completed", market);
 
     // GRÁTIS = descoberta: score, resumo curto, 3 pontos fortes, contagem e
     // títulos dos pontos de atenção + UM gap explicado em detalhe. Nada de
@@ -793,13 +847,15 @@ async function handlePreview(request: Request, env: Env) {
       attention_first: premium.attention[0] || null,
       attention_locked: premium.attention.slice(1).map(a => a.requirement),
       attention_count: premium.attention.length,
-      price: env.PRICE_BRL || "9,90"
+      price: marketPrice(env, market),
+      currency: marketCurrency(market)
     };
 
     return json({
       token,
+      market,
       preview,
-      price: env.PRICE_BRL || "9,90"
+      price: marketPrice(env, market)
     });
   } catch (err) {
     console.error(err);
@@ -875,17 +931,18 @@ async function handleEvent(request: Request, env: Env) {
   if (!(FUNNEL_STAGES as readonly string[]).includes(stage)) {
     return json({ error: "Evento desconhecido." }, 400);
   }
+  const market = normMarket(body?.market);
   const hour = new Date().toISOString().slice(0, 13);
   if ((await checkAndIncrement(env, `rl-ev:${clientIp(request)}:${hour}`, 60, 3700)) === null) {
     return json({ ok: true }); // silencioso sob rate limit
   }
-  await bump(env, stage as FunnelStage);
+  await bump(env, stage as FunnelStage, market);
   // Atribuição de tráfego (UTM) — só contadores por fonte, nunca conteúdo.
   const utmSource = String(body?.utm?.source || "").replace(/[^\w.-]/g, "").slice(0, 40);
   if (utmSource && stage === "landing_view") {
     const day = new Date().toISOString().slice(0, 10);
-    await env.RESULTS.put(`ev:utm:${utmSource}:${day}`, String((await kvCount(env, `ev:utm:${utmSource}:${day}`)) + 1), { expirationTtl: 31 * 86400 });
-    await env.RESULTS.put(`ev:utm:${utmSource}:total`, String((await kvCount(env, `ev:utm:${utmSource}:total`)) + 1));
+    await env.RESULTS.put(`ev:utm:${market}:${utmSource}:${day}`, String((await kvCount(env, `ev:utm:${market}:${utmSource}:${day}`)) + 1), { expirationTtl: 31 * 86400 });
+    await env.RESULTS.put(`ev:utm:${market}:${utmSource}:total`, String((await kvCount(env, `ev:utm:${market}:${utmSource}:total`)) + 1));
   }
   return json({ ok: true });
 }
@@ -898,9 +955,90 @@ async function handleStatus(env: Env) {
     budget: { used, limit, remaining: Math.max(0, limit - used) },
     model: env.OPENAI_MODEL,
     price: env.PRICE_BRL,
+    price_usd: env.PRICE_USD,
     stripe: Boolean(env.STRIPE_SECRET_KEY),
     turnstile: Boolean(env.TURNSTILE_SECRET)
   });
+}
+
+const ratePct = (from: number, to: number) => (from > 0 ? `${Math.round((to / from) * 100)}%` : null);
+
+const CONV_PAIRS: [string, string, string][] = [
+  ["landing_view", "analysis_started", "landing→analysis"],
+  ["analysis_started", "analysis_completed", "analysis→completed"],
+  ["analysis_completed", "result_viewed", "completed→result"],
+  ["result_viewed", "locked_insights_viewed", "result→insights"],
+  ["locked_insights_viewed", "unlock_clicked", "insights→unlock"],
+  ["unlock_clicked", "checkout_started", "unlock→checkout"],
+  ["checkout_started", "payment_completed", "checkout→paid"],
+  ["payment_completed", "full_report_viewed", "paid→report"],
+  ["landing_view", "payment_completed", "landing→paid"]
+];
+
+function buildConv(t: Record<string, number>): Record<string, string> {
+  const conv: Record<string, string> = {};
+  for (const [a, b, name] of CONV_PAIRS) {
+    const r = ratePct(t[a], t[b]);
+    if (r) conv[name] = r;
+  }
+  return conv;
+}
+
+// Lê os contadores de UM mercado. BR inclui as chaves LEGADAS sem prefixo
+// (pré-mercado, 11/08) para não perder o histórico.
+async function readMarketStats(env: Env, m: Market, day: string, dates: string[], daysParam: number) {
+  const today: Record<string, number> = {};
+  const total: Record<string, number> = {};
+  const window: Record<string, number> = {};
+  const isBr = m === "br";
+  for (const stage of FUNNEL_STAGES) {
+    today[stage] = await kvCount(env, `ev:${m}:${stage}:${day}`);
+    total[stage] = await kvCount(env, `evt:${m}:${stage}`);
+    let sum = 0;
+    for (const d of dates) sum += await kvCount(env, `ev:${m}:${stage}:${d}`);
+    if (isBr) {
+      today[stage] += await kvCount(env, `ev:${stage}:${day}`);
+      total[stage] += await kvCount(env, `evt:${stage}`);
+      for (const d of dates) sum += await kvCount(env, `ev:${stage}:${d}`);
+    }
+    window[stage] = daysParam > 0 ? sum : total[stage];
+  }
+  return { window, today, total, conv: buildConv(window) };
+}
+
+// Fontes de tráfego (UTM) por mercado; "all" soma BR + US (+ legado em BR).
+async function readSources(env: Env, dates: string[], daysParam: number, market: Market | "all") {
+  const srcMap = new Map<string, { landings: number; paid: number }>();
+  const mkPrefixes = (base: string): string[] =>
+    market === "all" ? [`${base}br:`, `${base}us:`, base]
+    : market === "us" ? [`${base}us:`]
+    : [`${base}br:`, base];
+  const addKeys = async (prefixes: string[], paid: boolean) => {
+    for (const prefix of prefixes) {
+      const keys = await env.RESULTS.list({ prefix });
+      for (const k of keys.keys) {
+        const parts = k.name.split(":");
+        // ev:utm:<mkt>:<src>:<day|total>  |  legado ev:utm:<src>:<day|total>
+        const hasMkt = parts[2] === "br" || parts[2] === "us";
+        const src = hasMkt ? parts[3] : parts[2];
+        const dayPart = hasMkt ? parts[4] : parts[3];
+        if (!src || !dayPart) continue;
+        if (dayPart === "total") {
+          if (daysParam > 0) continue;
+        } else if (daysParam > 0 && !dates.includes(dayPart)) {
+          continue;
+        }
+        const e = srcMap.get(src) || { landings: 0, paid: 0 };
+        e[paid ? "paid" : "landings"] += Number(await env.RESULTS.get(k.name)) || 0;
+        srcMap.set(src, e);
+      }
+    }
+  };
+  await addKeys(mkPrefixes("ev:utm:"), false);
+  await addKeys(mkPrefixes("ev:utm-paid:"), true);
+  const sources = Array.from(srcMap.entries()).map(([source, e]) => ({ source, landings: e.landings, paid: e.paid }));
+  sources.sort((a, b) => b.landings - a.landings);
+  return sources.slice(0, 20);
 }
 
 async function handleStats(env: Env, url: URL) {
@@ -912,9 +1050,6 @@ async function handleStats(env: Env, url: URL) {
   // Período: 1=hoje, 7, 30, 0=todo período (totais). Usa as chaves diárias.
   const daysParam = Math.max(0, Math.min(365, Number(url.searchParams.get("days") || "1") || 0));
   const day = new Date().toISOString().slice(0, 10);
-  const today: Record<string, number> = {};
-  const total: Record<string, number> = {};
-  const window: Record<string, number> = {};
   const dates: string[] = [];
   if (daysParam > 0) {
     for (let i = 0; i < daysParam; i++) {
@@ -922,107 +1057,103 @@ async function handleStats(env: Env, url: URL) {
       dates.push(d);
     }
   }
-  for (const stage of FUNNEL_STAGES) {
-    today[stage] = await kvCount(env, `ev:${stage}:${day}`);
-    total[stage] = await kvCount(env, `evt:${stage}`);
-    let sum = 0;
-    for (const d of dates) sum += await kvCount(env, `ev:${stage}:${d}`);
-    window[stage] = daysParam > 0 ? sum : total[stage];
-  }
-  const rate = (from: number, to: number) => (from > 0 ? `${Math.round((to / from) * 100)}%` : null);
-  const buildConv = (t: Record<string, number>): Record<string, string> => {
-    const conv: Record<string, string> = {};
-    const pairs: [string, string, string][] = [
-      ["landing_view", "analysis_started", "landing→analysis"],
-      ["analysis_started", "analysis_completed", "analysis→completed"],
-      ["analysis_completed", "result_viewed", "completed→result"],
-      ["result_viewed", "locked_insights_viewed", "result→insights"],
-      ["locked_insights_viewed", "unlock_clicked", "insights→unlock"],
-      ["unlock_clicked", "checkout_started", "unlock→checkout"],
-      ["checkout_started", "payment_completed", "checkout→paid"],
-      ["payment_completed", "full_report_viewed", "paid→report"],
-      ["landing_view", "payment_completed", "landing→paid"]
-    ];
-    for (const [a, b, name] of pairs) {
-      const r = rate(t[a], t[b]);
-      if (r) conv[name] = r;
-    }
-    return conv;
+
+  // Mercado selecionado: br | us | all (padrão: all = soma BR + US).
+  const marketParam = String(url.searchParams.get("market") || "all").toLowerCase();
+  const selected: Market | "all" = marketParam === "us" ? "us" : marketParam === "br" ? "br" : "all";
+
+  const [br, us] = await Promise.all([readMarketStats(env, "br", day, dates, daysParam), readMarketStats(env, "us", day, dates, daysParam)]);
+  const merge = (a: Record<string, number>, b: Record<string, number>): Record<string, number> => {
+    const o: Record<string, number> = {};
+    for (const stage of FUNNEL_STAGES) o[stage] = (a[stage] || 0) + (b[stage] || 0);
+    return o;
   };
-  // Fontes de tráfego (UTM): landings e vendas por fonte no período.
-  const sources: { source: string; landings: number; paid: number }[] = [];
-  try {
-    const srcMap = new Map<string, { landings: number; paid: number }>();
-    const utmKeys = await env.RESULTS.list({ prefix: "ev:utm:" });
-    for (const k of utmKeys.keys) {
-      const parts = k.name.split(":");
-      // ev:utm:<source>:<date|total>
-      if (parts.length < 4) continue;
-      const src = parts[2];
-      const dayPart = parts[3];
-      if (dayPart === "total") continue;
-      if (daysParam > 0 && !dates.includes(dayPart)) continue;
-      const e = srcMap.get(src) || { landings: 0, paid: 0 };
-      e.landings += (await env.RESULTS.get(k.name)) ? 1 : 0;
-      srcMap.set(src, e);
-    }
-    // conte apenas valores (o kvCount seria um get por chave; aqui já fizemos get)
-    const paidKeys = await env.RESULTS.list({ prefix: "ev:utm-paid:" });
-    for (const k of paidKeys.keys) {
-      const parts = k.name.split(":");
-      if (parts.length < 4) continue;
-      const src = parts[2];
-      const dayPart = parts[3];
-      if (dayPart === "total") continue;
-      if (daysParam > 0 && !dates.includes(dayPart)) continue;
-      const e = srcMap.get(src) || { landings: 0, paid: 0 };
-      e.paid += (await env.RESULTS.get(k.name)) ? 1 : 0;
-      srcMap.set(src, e);
-    }
-    // landings reais = valor numérico da chave (não 1 por chave)
-    for (const [src, e] of srcMap) {
-      let lsum = 0;
-      for (const d of dates.length ? dates : [""]) {
-        const v = await env.RESULTS.get(`ev:utm:${src}:${d}`);
-        if (v) lsum += Number(v) || 0;
-      }
-      if (!dates.length) {
-        const v = await env.RESULTS.get(`ev:utm:${src}:total`);
-        if (v) lsum = Number(v) || 0;
-      }
-      let psum = 0;
-      for (const d of dates.length ? dates : [""]) {
-        const v = await env.RESULTS.get(`ev:utm-paid:${src}:${d}`);
-        if (v) psum += Number(v) || 0;
-      }
-      if (!dates.length) {
-        const v = await env.RESULTS.get(`ev:utm-paid:${src}:total`);
-        if (v) psum = Number(v) || 0;
-      }
-      sources.push({ source: src, landings: lsum, paid: psum });
-    }
-    sources.sort((a, b) => b.landings - a.landings);
-  } catch {
-    // fontes são best-effort; nunca quebram o stats
-  }
+  const window = selected === "all" ? merge(br.window, us.window) : selected === "us" ? us.window : br.window;
+  const today = selected === "all" ? merge(br.today, us.today) : selected === "us" ? us.today : br.today;
+  const total = selected === "all" ? merge(br.total, us.total) : selected === "us" ? us.total : br.total;
 
   return json({
     day,
     days: daysParam,
-    sources: sources.slice(0, 20),
+    market: selected,
+    sources: await readSources(env, dates, daysParam, selected),
     window,
     today,
     total,
     conv: buildConv(window),
-    convTotal: buildConv(total)
+    convTotal: buildConv(total),
+    // Comparação BR vs US (sempre presente — o dashboard usa p/ o experimento).
+    markets: {
+      br: { window: br.window, total: br.total, conv: br.conv },
+      us: { window: us.window, total: us.total, conv: us.conv }
+    }
   });
 }
 
-async function handleConfig(env: Env) {
+async function handleConfig(env: Env, url: URL) {
+  const market = normMarket(url.searchParams.get("market"));
   return json({
     turnstile_sitekey: env.TURNSTILE_SITEKEY || "",
-    price: env.PRICE_BRL || "9,90"
+    price: marketPrice(env, market),
+    currency: marketCurrency(market)
   });
+}
+
+// ── Landing dos EUA (/us) ────────────────────────────────────────
+// O MESMO index.html da versão BR, com head en-US injetado: título SEO,
+// meta description, canonical, Open Graph/Twitter e o marcador mv-market
+// que o cliente lê para ativar o dicionário "us" e o funil do mercado US.
+const US_META_TITLE = "Resume Job Match Checker — See How Well Your Resume Fits the Job";
+const US_META_DESC =
+  "Upload your resume, paste the job description and get your match score, missing skills and personalized improvements in about 60 seconds. Free initial analysis.";
+const US_CANONICAL = "https://matchvaga.kubezen.com/us";
+
+function injectUsLanding(html: string): string {
+  const meta =
+    `<meta name="mv-market" content="us">\n` +
+    `    <title>${US_META_TITLE}</title>\n` +
+    `    <meta name="description" content="${US_META_DESC}">\n` +
+    `    <link rel="canonical" href="${US_CANONICAL}">\n` +
+    `    <meta property="og:title" content="${US_META_TITLE}">\n` +
+    `    <meta property="og:description" content="${US_META_DESC}">\n` +
+    `    <meta property="og:url" content="${US_CANONICAL}">\n` +
+    `    <meta property="og:locale" content="en_US">\n` +
+    `    <meta name="twitter:title" content="${US_META_TITLE}">\n` +
+    `    <meta name="twitter:description" content="${US_META_DESC}">`;
+  let out = html
+    .replace('<html lang="pt-BR">', '<html lang="en-US">')
+    // remove os defaults PT (o <title> com data-i18n, senão o applyI18n do
+    // i18n.js sobrescreveria o título SEO pelo H1)
+    .replace(/<title[^>]*>[\s\S]*?<\/title>/, "")
+    .replace(/<meta name="description"[^>]*>/, "")
+    .replace(/<link rel="canonical"[^>]*>/, "")
+    .replace(/<meta property="og:title"[^>]*>/, "")
+    .replace(/<meta property="og:description"[^>]*>/, "")
+    .replace(/<meta property="og:url"[^>]*>/, "")
+    .replace(/<meta property="og:locale"[^>]*>/, "")
+    .replace(/<meta name="twitter:title"[^>]*>/, "")
+    .replace(/<meta name="twitter:description"[^>]*>/, "");
+  return out.replace("<head>", "<head>\n    " + meta);
+}
+
+async function serveLanding(env: Env, url: URL, request: Request, market: Market): Promise<Response> {
+  let asset = await env.ASSETS.fetch(new Request(new URL("/index.html", url), request), { redirect: "manual" });
+  let hops = 0;
+  while ((asset.status === 301 || asset.status === 302 || asset.status === 307 || asset.status === 308) && hops < 4) {
+    const loc = asset.headers.get("location");
+    if (!loc) break;
+    asset = await env.ASSETS.fetch(new Request(new URL(loc, url), request), { redirect: "manual" });
+    hops++;
+  }
+  const body = market === "us" ? injectUsLanding(await asset.text()) : await asset.text();
+  const headers = new Headers({
+    "content-type": asset.headers.get("content-type") || "text/html;charset=utf-8",
+    "cache-control": "no-store"
+  });
+  for (const [name, value] of Object.entries(securityHeaders)) {
+    if (!headers.has(name)) headers.set(name, value);
+  }
+  return new Response(body, { status: asset.status, headers });
 }
 
 export default {
@@ -1090,11 +1221,18 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/api/config") {
-      return handleConfig(env);
+      return handleConfig(env, url);
+    }
+
+    // /us = landing americana (experimento). Conta landing_view no mercado US e
+    // serve o MESMO index.html com head en-US injetado (SEO + meta mv-market).
+    if (request.method === "GET" && url.pathname === "/us") {
+      await bump(env, "landing_view", "us");
+      return serveLanding(env, url, request, "us");
     }
 
     if (request.method === "GET" && url.pathname === "/") {
-      await bump(env, "landing_view");
+      await bump(env, "landing_view", "br");
     }
 
     const asset = await env.ASSETS.fetch(request);

@@ -9,6 +9,12 @@
   .period{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
   .period button{font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border:1px solid var(--line);border-radius:99px;background:#fff;color:var(--muted);cursor:pointer}
   .period button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .market{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .market .market-lbl{font-size:12px;font-weight:800;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+  .market button{font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border:1px solid var(--line);border-radius:99px;background:#fff;color:var(--muted);cursor:pointer}
+  .market button.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .compare-sub{color:var(--faint);font-size:12.5px;margin:-8px 0 10px}
+  td.cmp-conv{color:var(--muted);font-size:12.5px;font-style:italic}
   .kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:16px}
   @media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}.kpis .kpi:nth-child(7){grid-column:span 2}}
   .kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 10px;text-align:center}

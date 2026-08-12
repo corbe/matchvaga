@@ -72,6 +72,7 @@
       "paywall.cta": "Ver análise completa",
       "paywall.retry": "Liberar minha análise (já paguei)",
       "paywall.once": "R$ 9,90 · pagamento único",
+      "paywall.payNote": "Pague com cartão ou boleto · checkout seguro via Stripe.",
       // relatório
       "premium.title": "Análise completa",
       "premium.compat": "Compatibilidade",
@@ -139,6 +140,18 @@
       "dash.thPaid": "Vendas",
       "dash.thSrcConv": "Conv.",
       "dash.noSources": "sem dados de UTM ainda (adicione ?utm_source=… aos links)",
+      "dash.mLbl": "Mercado:",
+      "dash.mBr": "🇧🇷 BR",
+      "dash.mUs": "🇺🇸 US",
+      "dash.mAll": "Ambos",
+      "dash.compareTitle": "Experimento: BR vs US",
+      "dash.compareSub": "Etapas-chave e conversões por mercado (mesmo período).",
+      "dash.cSessUpload": "sessão → upload",
+      "dash.cUploadDone": "upload → análise concluída",
+      "dash.cDoneInsights": "análise → insights bloqueados vistos",
+      "dash.cInsightsCheckout": "insights → checkout",
+      "dash.cCheckoutPaid": "checkout → pagamento",
+      "dash.cSessPaid": "sessão → pagamento",
 
       "dash.funnel": "Funil",
       "dash.table": "Tabela de conversão",
@@ -242,7 +255,8 @@
       "paywall.kit6": "✓ interview preparation",
       "paywall.cta": "View full analysis",
       "paywall.retry": "Unlock my analysis (already paid)",
-      "paywall.once": "$9.90 · one-time payment",
+      "paywall.once": "R$ 9.90 · one-time payment",
+      "paywall.payNote": "Pay with card or boleto · secure Stripe checkout.",
       "premium.title": "Full analysis",
       "premium.compat": "Compatibility",
       "premium.requirements": "Identified requirements",
@@ -293,6 +307,19 @@
       "faq.a5": "No. The suggestions use only real information provided by you.",
       "faq.q6": "What happens to my résumé?",
       "faq.a6": "Your résumé text is used only to generate your analysis, is stored temporarily on Cloudflare's infrastructure and is automatically removed after 24 hours. It is not shared with third parties.",
+      // dashboard (novos — o restante do dash cai no fallback pt, como antes)
+      "dash.mLbl": "Market:",
+      "dash.mBr": "🇧🇷 BR",
+      "dash.mUs": "🇺🇸 US",
+      "dash.mAll": "Both",
+      "dash.compareTitle": "Experiment: BR vs US",
+      "dash.compareSub": "Key stages and conversions per market (same period).",
+      "dash.cSessUpload": "session → upload",
+      "dash.cUploadDone": "upload → analysis completed",
+      "dash.cDoneInsights": "analysis → locked insights viewed",
+      "dash.cInsightsCheckout": "insights → checkout",
+      "dash.cCheckoutPaid": "checkout → payment",
+      "dash.cSessPaid": "session → payment",
       "footer.privacy": "Privacy notice: your résumé is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties."
     },
     es: {
@@ -354,7 +381,8 @@
       "paywall.kit6": "✓ preparación para la entrevista",
       "paywall.cta": "Ver análisis completo",
       "paywall.retry": "Desbloquear mi análisis (ya pagué)",
-      "paywall.once": "$9.90 · pago único",
+      "paywall.once": "R$ 9,90 · pago único",
+      "paywall.payNote": "Paga con tarjeta o boleto · pago seguro vía Stripe.",
       "premium.title": "Análisis completo",
       "premium.compat": "Compatibilidad",
       "premium.requirements": "Requisitos identificados",
@@ -405,11 +433,162 @@
       "faq.a5": "No. Las sugerencias usan únicamente información real proporcionada por ti.",
       "faq.q6": "¿Qué pasa con mi currículum?",
       "faq.a6": "El texto de tu currículum se usa solo para generar tu análisis, se almacena temporalmente en la infraestructura de Cloudflare y se elimina automáticamente después de 24 horas. No se comparte con terceros.",
+      // dashboard (novos — o restante do dash cai no fallback pt, como antes)
+      "dash.mLbl": "Mercado:",
+      "dash.mBr": "🇧🇷 BR",
+      "dash.mUs": "🇺🇸 US",
+      "dash.mAll": "Ambos",
+      "dash.compareTitle": "Experimento: BR vs US",
+      "dash.compareSub": "Etapas clave y conversiones por mercado (mismo período).",
+      "dash.cSessUpload": "sesión → subida",
+      "dash.cUploadDone": "subida → análisis completado",
+      "dash.cDoneInsights": "análisis → insights bloqueados vistos",
+      "dash.cInsightsCheckout": "insights → checkout",
+      "dash.cCheckoutPaid": "checkout → pago",
+      "dash.cSessPaid": "sesión → pago",
       "footer.privacy": "Aviso de privacidad: tu currículum se usa exclusivamente para generar tu análisis, se almacena temporalmente y se elimina automáticamente después de 24 horas. No se comparte con terceros."
+    },
+    us: {
+      // en-US nativo (mercado americano — experimento). "resume", nunca "CV".
+      "lang.name": "English (US)",
+      // hero
+      "hero.badge": "✓ Free initial analysis",
+      "hero.title": "See how well your resume matches the job before you apply.",
+      "hero.sub": "Get your match score, missing skills, and personalized improvements in about 60 seconds.",
+      "hero.cta": "Analyze My Resume — Free",
+      "hero.note": "No account required · Results in ~60 seconds · PDF or DOCX",
+      "hero.pasteLink": "Prefer to paste your resume text? Go to the form →",
+      // form
+      "form.title": "Free analysis in 2 steps",
+      "form.cv": "1. Your resume",
+      "form.upload": "Upload PDF or DOCX",
+      "form.uploadHint": "click to choose the file",
+      "form.remove": "Remove",
+      "form.trust1": "✓ Free initial analysis",
+      "form.trust2": "✓ No account required",
+      "form.trust3": "✓ PDF and DOCX supported · your file never leaves your browser",
+      "form.privacy": "🔒 Only the extracted text is sent to generate the analysis — nothing is stored permanently.",
+      "form.pasteToggle": "Prefer to paste your resume text?",
+      "form.cvPlaceholder": "Paste your resume text here...",
+      "form.job": "2. Job description",
+      "form.jobPlaceholder": "Paste the job description (e.g.: 'Front-end Developer — React, TypeScript, API experience…')",
+      "form.analyze": "Check My Match — Free",
+      // loading / live
+      "load.reading": "Reading your resume",
+      "load.requirements": "Identifying job requirements",
+      "load.comparing": "Comparing your experience",
+      "load.finishing": "Finishing your report...",
+      "live.confirming": "Confirming payment",
+      "live.generating": "Generating your full report",
+      "load.fileReading": "Reading file...",
+      "load.fileLoaded": "Resume loaded",
+      "load.fileReadOk": "Resume read ✓ ",
+      "load.fileReadFail": "Could not read the text from this PDF (it may be scanned). Prefer to paste the text manually?",
+      "load.fileFail": "Could not read the file.",
+      "load.longCv": "Long resume: we analyzed the first ",
+      "load.longJob": "Long job description: we analyzed the first ",
+      // form errors
+      "err.cv": "Upload your resume (PDF or DOCX) or paste the text.",
+      "err.job": "Paste the job description so we can compare.",
+      "err.analyzeFirst": "Run an analysis first.",
+      "err.generic": "We could not finish your analysis. Please try again.",
+      "err.analysis": "Analysis failed.",
+      "btn.tryAgain": "Try again",
+      "btn.analyzing": "Analyzing...",
+      // result
+      "result.scoreLabel": "Resume Match",
+      "result.scoreTipAria": "What the score means",
+      "result.scoreTip": "The score compares information found in your resume with the requirements identified in the job description. It does not predict hiring.",
+      "result.strengths": "What your resume demonstrates well",
+      "result.attentionTitle": "We found {n} points worth attention",
+      "result.attentionTitle1": "We found 1 point worth attention",
+      // paywall
+      "paywall.title": "Your analysis still has {n} points",
+      "paywall.title1": "Your analysis still has 1 point",
+      "paywall.kitTitle": "Unlock your full analysis",
+      "paywall.kit1": "✓ Missing skills and keywords",
+      "paywall.kit2": "✓ Resume weaknesses",
+      "paywall.kit3": "✓ Job requirement gaps",
+      "paywall.kit4": "✓ Personalized improvements",
+      "paywall.kit5": "✓ Safe rewrite suggestions",
+      "paywall.kit6": "✓ A message for the hiring manager",
+      "paywall.cta": "Unlock Full Analysis — $2.99",
+      "paywall.retry": "Unlock my analysis (already paid)",
+      "paywall.once": "$2.99 · one-time payment",
+      "paywall.payNote": "Secure checkout — cards accepted · powered by Stripe.",
+      // full report
+      "premium.title": "Full Analysis",
+      "premium.compat": "Resume Match",
+      "premium.requirements": "Job requirements identified",
+      "premium.thReq": "Requirement",
+      "premium.thSit": "Status",
+      "premium.thEv": "Evidence",
+      "premium.attentionAll": "All points of attention",
+      "premium.rewrites": "Safe rewrites",
+      "premium.badgeCopy": "ready to copy",
+      "premium.opportunities": "Conditional opportunities",
+      "premium.badgeCond": "if you have the experience",
+      "premium.optimized": "Resume optimized for the job",
+      "premium.optimizedNote": "Optimize ≠ invent: nothing was added beyond what is already in your resume.",
+      "premium.keywords": "Relevant keywords",
+      "premium.message": "Message for the hiring manager",
+      "premium.interview": "Interview preparation",
+      // attention card
+      "att.jobAsks": "What the job asks",
+      "att.inCv": "In your resume",
+      "att.interpretation": "Interpretation",
+      "att.why": "Why it deserves attention",
+      "att.whatToDo": "What to do",
+      "att.original": "Original",
+      "att.safeSuggestion": "Safe suggestion",
+      "att.whyShort": "Why",
+      // unlock / payment
+      "unlock.paid": "Payment confirmed. Unlocking your analysis...",
+      "unlock.unlocking": "Unlocking your analysis...",
+      "unlock.notConfirmed": "We could not confirm your payment yet. If you already paid, click below to unlock your analysis.",
+      "unlock.expired": "Your analysis expired. Generate a new one for free.",
+      "unlock.fail": "We could not complete the payment. No charge was confirmed. Please try again.",
+      "unlock.notDone": "Payment not completed. No charge was confirmed. You can try again.",
+      "pay.error": "We could not complete the payment. No charge was confirmed. Please try again.",
+      "refuse.garbage": "Your previous analysis could not be generated correctly (the resume was not read). Run a new analysis for free.",
+      "refuse.incomplete": "Your previous analysis was incomplete (generated before the report fix). Run the analysis again to receive the full kit — it is free.",
+      // extract.js
+      "extract.unsupported": "Unsupported format. Upload a PDF or DOCX.",
+      "extract.fail": "We could not extract text from this file (it may be scanned or have a complex format). Paste your resume text below.",
+      "extract.empty": "The file is empty or has no readable text.",
+      // turnstile
+      "captcha.fallback": "Security verification is unavailable in this browser. No problem: the analysis remains available, with a per-IP usage limit.",
+      // faq
+      "faq.title": "Frequently asked questions",
+      "faq.q1": "Is the initial analysis really free?",
+      "faq.a1": "Yes. You see your match score and a detailed look at one gap before deciding whether to unlock the complete report.",
+      "faq.q2": "Do I need to create an account?",
+      "faq.a2": "No. No sign-up or email is required.",
+      "faq.q3": "Does MatchVaga guarantee an interview?",
+      "faq.a3": "No. MatchVaga identifies differences between your resume and the job requirements and suggests improvements — it does not promise hiring.",
+      "faq.q4": "Is the payment recurring?",
+      "faq.a4": "No. It is a one-time payment for that analysis.",
+      "faq.q5": "Does MatchVaga invent experiences?",
+      "faq.a5": "No. Every suggestion uses only real information from the resume you provide.",
+      "faq.q6": "What happens to my resume?",
+      "faq.a6": "Your resume text is used only to generate your analysis, is stored temporarily on Cloudflare's infrastructure and is automatically removed after 24 hours. It is not shared with third parties.",
+      // footer
+      "footer.privacy": "Privacy notice: your resume is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties.",
+      "footer.privacyBody": "your resume is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties."
     }
   };
 
+  // Mercado definido pelo servidor: <meta name="mv-market" content="us"> na
+  // rota /us (injetado no worker). Ausente = mercado BR.
+  function marketFromMeta() {
+    const m = document.querySelector('meta[name="mv-market"]');
+    return m && m.getAttribute("content") === "us" ? "us" : null;
+  }
+
   function detectLang() {
+    // A página /us é SEMPRE inglês americano (experimento isolado — o seletor
+    // nem aparece; mudar idioma lá misturaria os mercados no funil).
+    if (marketFromMeta() === "us") return "us";
     try {
       const saved = localStorage.getItem("mv-lang");
       if (saved && L10N[saved]) return saved;
@@ -423,8 +602,13 @@
   let LANG = detectLang();
 
   window.MV_LANG = LANG;
+  window.MV_MARKET = marketFromMeta() || "br";
   window.t = function (key, vars) {
-    let s = (L10N[LANG] && L10N[LANG][key]) || L10N.pt[key] || key;
+    // "us" cai no dicionário americano; chave ausente → en (nunca pt, para
+    // não vazar português numa página americana).
+    let s = (L10N[LANG] && L10N[LANG][key]) ||
+      (LANG === "us" ? L10N.en[key] : undefined) ||
+      L10N.pt[key] || key;
     if (vars) {
       for (const k in vars) s = s.split("{" + k + "}").join(String(vars[k]));
     }
@@ -432,7 +616,7 @@
   };
 
   window.applyI18n = function () {
-    document.documentElement.lang = LANG === "pt" ? "pt-BR" : LANG;
+    document.documentElement.lang = LANG === "pt" ? "pt-BR" : LANG === "us" ? "en-US" : LANG;
     document.querySelectorAll("[data-i18n]").forEach(el => {
       el.textContent = window.t(el.getAttribute("data-i18n"));
     });
@@ -456,6 +640,8 @@
 
   window.setLang = function (lang) {
     if (!L10N[lang]) return;
+    // Na página /us o idioma é fixo (mercado US) — seletor nem é renderizado.
+    if (marketFromMeta() === "us") return;
     LANG = lang;
     window.MV_LANG = lang;
     try { localStorage.setItem("mv-lang", lang); } catch {}
@@ -466,6 +652,11 @@
   window.initLangSelector = function (selId) {
     const sel = document.getElementById(selId);
     if (!sel) return;
+    if (marketFromMeta() === "us") {
+      const wrap = sel.closest(".lang-sel");
+      if (wrap) wrap.style.display = "none";
+      return;
+    }
     sel.value = LANG;
     sel.addEventListener("change", () => window.setLang(sel.value));
   };

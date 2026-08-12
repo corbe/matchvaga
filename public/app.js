@@ -28,6 +28,12 @@ function getUtm() {
 }
 const UTM = readUtm() || getUtm();
 
+// ── Mercado (BR | US) — definido pelo servidor via <meta name="mv-market">
+// (injetado na rota /us). Toda chamada de API carrega o mercado; o funil
+// separa os contadores por ele. No mercado US o idioma de API é sempre "en".
+const MARKET = (window.MV_MARKET === "us" ? "us" : "br");
+const API_LANG = MARKET === "us" ? "en" : (window.MV_LANG || "pt");
+
 // ── Analytics (só contadores agregados — nunca conteúdo) ─────────
 async function track(stage) {
   if (firedEvents.has(stage)) return;
@@ -36,7 +42,7 @@ async function track(stage) {
     await fetch("/api/event", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ stage, utm: UTM })
+      body: JSON.stringify({ stage, market: MARKET, utm: UTM })
     });
   } catch {
     // analytics nunca deve quebrar o fluxo
@@ -244,7 +250,7 @@ async function runAnalysis() {
     const response = await fetch("/api/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ cv: cvSend, job: jobSend, turnstile: turnstileToken, lang: window.MV_LANG || "pt", utm: UTM })
+      body: JSON.stringify({ cv: cvSend, job: jobSend, turnstile: turnstileToken, lang: API_LANG, market: MARKET, utm: UTM })
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || !data) {
@@ -434,7 +440,7 @@ async function pollUnlock() {
       const response = await fetch("/api/unlock", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: resultToken, code: "", lang: window.MV_LANG || "pt" })
+        body: JSON.stringify({ token: resultToken, code: "", lang: API_LANG })
       });
       const data = await response.json().catch(() => null);
       if (response.ok && data && data.ok) {
@@ -496,7 +502,7 @@ $("pay").addEventListener("click", async () => {
     const response = await fetch("/api/checkout", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: resultToken, lang: window.MV_LANG || "pt" })
+      body: JSON.stringify({ token: resultToken, lang: API_LANG, market: MARKET })
     });
     const data = await response.json().catch(() => null);
 
@@ -552,7 +558,7 @@ async function unlockDirect(token) {
     const res = await fetch("/api/unlock", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token, code: "", lang: window.MV_LANG || "pt" })
+      body: JSON.stringify({ token, code: "", lang: API_LANG })
     });
     const data = await res.json().catch(() => null);
     if (res.ok && data && data.ok) {
@@ -816,7 +822,7 @@ if (savedToken) {
       const res = await fetch("/api/unlock", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: savedToken, code: "", lang: window.MV_LANG || "pt" })
+        body: JSON.stringify({ token: savedToken, code: "", lang: API_LANG })
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data && data.ok) {

@@ -17,10 +17,47 @@ const STAGES = [
 ];
 const st = key => window.t ? window.t(key) : key;
 let DAYS = 7;
+// Mercado selecionado: br | us | all (padrão: ambos). Persistido na URL (?market=).
+let MARKET = (new URLSearchParams(location.search).get("market") || "all");
 
 const fmt = n => (n || 0).toLocaleString("pt-BR");
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
 const cls = r => r >= 60 ? "hot" : r >= 25 ? "mid" : "cold";
+const pctCell = r => r === null ? "—" : r + "%";
+
+// Linhas da comparação BR vs US (experimento): etapas-chave + conversões.
+const COMPARE_STAGES = [
+  ["session_view", "dash.fSessions"],
+  ["resume_uploaded", "dash.fResume"],
+  ["analysis_completed", "dash.fCompleted"],
+  ["result_viewed", "dash.fResult"],
+  ["locked_insights_viewed", "dash.fInsights"],
+  ["checkout_started", "dash.fCheckout"],
+  ["payment_completed", "dash.fPaid"]
+];
+const COMPARE_CONV = [
+  ["session_view", "resume_uploaded", "dash.cSessUpload"],
+  ["resume_uploaded", "analysis_completed", "dash.cUploadDone"],
+  ["analysis_completed", "locked_insights_viewed", "dash.cDoneInsights"],
+  ["locked_insights_viewed", "checkout_started", "dash.cInsightsCheckout"],
+  ["checkout_started", "payment_completed", "dash.cCheckoutPaid"],
+  ["session_view", "payment_completed", "dash.cSessPaid"]
+];
+
+function renderCompare(d) {
+  const body = document.getElementById("compareBody");
+  if (!body) return;
+  const br = (d.markets && d.markets.br && d.markets.br.window) || {};
+  const us = (d.markets && d.markets.us && d.markets.us.window) || {};
+  const rows = [];
+  COMPARE_STAGES.forEach(([key, name]) => {
+    rows.push(`<tr><td><b>${st(name)}</b></td><td>${fmt(br[key])}</td><td>${fmt(us[key])}</td></tr>`);
+  });
+  COMPARE_CONV.forEach(([a, b, name]) => {
+    rows.push(`<tr><td class="cmp-conv">${st(name)}</td><td class="${cls(pct(br[a], br[b]))}">${pctCell(pct(br[a], br[b]))}</td><td class="${cls(pct(us[a], us[b]))}">${pctCell(pct(us[a], us[b]))}</td></tr>`);
+  });
+  body.innerHTML = rows.join("");
+}
 
 function renderSources(sources) {
   const body = document.getElementById("sourcesBody");
@@ -37,7 +74,7 @@ function renderSources(sources) {
 
 async function load() {
   try {
-    const res = await fetch("/api/stats?days=" + DAYS + (KEY ? "&key=" + encodeURIComponent(KEY) : ""), { headers: { "cache-control": "no-cache" } });
+    const res = await fetch("/api/stats?days=" + DAYS + "&market=" + MARKET + (KEY ? "&key=" + encodeURIComponent(KEY) : ""), { headers: { "cache-control": "no-cache" } });
     if (res.status === 403) { document.getElementById("updated").textContent = window.t ? window.t("dash.denied") : "Acesso negado"; return; }
     const d = await res.json();
     const w = d.window || {};
@@ -53,11 +90,23 @@ async function load() {
     document.getElementById("kCheckout").textContent = fmt(w.checkout_started);
     document.getElementById("kVendas").textContent = fmt(w.payment_completed);
     document.getElementById("kConv").textContent = conv["landing→paid"] || "–";
-    const vendas = w.payment_completed || 0;
-    document.getElementById("kReceita").innerHTML = "R$ " + fmt(vendas * 9.9).replace(",", ".") + '<small> (9,90×' + fmt(vendas) + ")</small>";
+
+    // Receita por mercado: vendas BR × R$ 9,90 + vendas US × $2,99.
+    const brSales = (d.markets && d.markets.br && d.markets.br.window.payment_completed) || 0;
+    const usSales = (d.markets && d.markets.us && d.markets.us.window.payment_completed) || 0;
+    const brRev = brSales * 9.9;
+    const usRev = usSales * 2.99;
+    if (MARKET === "us") {
+      document.getElementById("kReceita").innerHTML = "$ " + fmt(usRev) + '<small> (2.99×' + fmt(usSales) + ")</small>";
+    } else if (MARKET === "br") {
+      document.getElementById("kReceita").innerHTML = "R$ " + fmt(brRev).replace(",", ".") + '<small> (9,90×' + fmt(brSales) + ")</small>";
+    } else {
+      document.getElementById("kReceita").innerHTML = "R$ " + fmt(brRev).replace(",", ".") + " + $ " + fmt(usRev) + '<small> (9,90×' + fmt(brSales) + " + 2.99×" + fmt(usSales) + ")</small>";
+    }
 
     // Funil: barras proporcionais a landing_view
     renderSources(d.sources || []);
+    renderCompare(d);
     const funnel = document.getElementById("funnel");
     funnel.innerHTML = "";
     const base = Math.max(1, w.landing_view || 1);
@@ -106,6 +155,21 @@ document.getElementById("period").addEventListener("click", ev => {
   DAYS = Number(btn.dataset.days);
   document.querySelectorAll("#period button").forEach(b => b.classList.toggle("on", b === btn));
   load();
+});
+
+// Filtro de mercado (BR | US | Ambos) — o estado fica na URL p/ compartilhar.
+document.getElementById("market").addEventListener("click", ev => {
+  const btn = ev.target.closest("button");
+  if (!btn) return;
+  MARKET = btn.dataset.market;
+  document.querySelectorAll("#market button").forEach(b => b.classList.toggle("on", b === btn));
+  const u = new URL(location.href);
+  if (MARKET === "all") u.searchParams.delete("market"); else u.searchParams.set("market", MARKET);
+  history.replaceState({}, "", u.pathname + u.search);
+  load();
+});
+document.querySelectorAll("#market button").forEach(b => {
+  b.classList.toggle("on", b.dataset.market === MARKET);
 });
 
 if (window.initLangSelector) {

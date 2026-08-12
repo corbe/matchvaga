@@ -22,6 +22,7 @@ preview_id = "4b4bcdf6760c4edba345e0249732ba53"
 [vars]
 OPENAI_MODEL = "deepseek-v4-flash"
 PRICE_BRL = "9,90"
+PRICE_USD = "2.99"
 PIX_KEY = "CONFIGURE_SUA_CHAVE_PIX"
 # Anti-abuso: máx. análises grátis por IP/hora e teto global diário.
 RATE_LIMIT_PER_HOUR = "3"
