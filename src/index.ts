@@ -124,6 +124,7 @@ async function contentHash(cv: string, job: string, lang = "pt"): Promise<string
 // ── Funil de conversão (agregado, sem dados pessoais) ────────────
 // Etapas medidas. Contadores por dia (TTL 31d) e totais (sem TTL).
 const FUNNEL_STAGES = [
+  "session_view",
   "landing_view",
   "analysis_started",
   "resume_uploaded",

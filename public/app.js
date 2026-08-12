@@ -134,6 +134,9 @@ $("cvFile").addEventListener("change", async e => {
     } else {
       cvText = text;
       showStatus(window.t ? window.t("load.fileReadOk") : "Currículo lido ✓ " + text.length + " caracteres extraídos.", "ok");
+      // Após escolher o arquivo, leva o usuário ao próximo passo (campo da vaga).
+      const formEl = document.getElementById("form");
+      if (formEl) formEl.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   } catch (err) {
     cvText = "";
@@ -750,6 +753,14 @@ async function initTurnstile() {
 
 // ── Init ─────────────────────────────────────────────────────────
 $("analyze").addEventListener("click", runAnalysis);
+// CTA do hero abre direto o seletor de arquivo (primeira interação em 1 clique).
+const heroCta = $("heroCta");
+if (heroCta) heroCta.addEventListener("click", () => { const f = $("cvFile"); if (f) f.click(); });
+// Sessão única por aba: diferencia visitantes de page views (refresh não conta).
+if (!sessionStorage.getItem("mv-session")) {
+  try { sessionStorage.setItem("mv-session", "1"); } catch {}
+  track("session_view");
+}
 $("cvText").addEventListener("input", () => {
   if ($("cvText").value.trim().length > 40) track("resume_uploaded");
 });

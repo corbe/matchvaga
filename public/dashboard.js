@@ -1,10 +1,14 @@
 
 const KEY = new URLSearchParams(location.search).get("key") || "";
 const STAGES = [
+  ["session_view", "dash.fSessions"],
   ["landing_view", "dash.fLanding"],
+  ["resume_uploaded", "dash.fResume"],
+  ["job_description_added", "dash.fJob"],
   ["analysis_started", "dash.fStarted"],
   ["analysis_completed", "dash.fCompleted"],
   ["result_viewed", "dash.fResult"],
+  ["free_insight_viewed", "dash.fFree"],
   ["locked_insights_viewed", "dash.fInsights"],
   ["unlock_clicked", "dash.fUnlock"],
   ["checkout_started", "dash.fCheckout"],

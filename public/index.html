@@ -42,18 +42,20 @@
           </select>
         </label>
       </div>
-      <h1 data-i18n="hero.title">Seu currículo está mostrando que você combina com esta vaga?</h1>
-      <p class="sub" data-i18n="hero.sub">Compare seu currículo com os requisitos da vaga e veja o que está bem demonstrado — e o que pode estar passando despercebido.</p>
-      <a href="#form" class="cta cta-primary" data-i18n="hero.cta">Analisar meu currículo</a>
-      <p class="hero-note" data-i18n="hero.note">Grátis para analisar · Sem cadastro</p>
+      <p class="hero-badge" data-i18n="hero.badge">✓ Análise grátis</p>
+      <h1 data-i18n="hero.title">Descubra em 1 minuto se seu currículo está alinhado com a vaga.</h1>
+      <p class="sub" data-i18n="hero.sub">Envie seu currículo, cole a descrição da vaga e veja na hora: o quanto você é compatível, o que já atende e o que pode melhorar antes de se candidatar.</p>
+      <button type="button" id="heroCta" class="cta cta-hero" data-i18n="hero.cta">Analisar meu currículo grátis</button>
+      <p class="hero-note" data-i18n="hero.note">Sem cadastro · Resultado em ~1 minuto · PDF ou DOCX</p>
+      <p class="hero-paste"><a href="#form" data-i18n="hero.pasteLink">Prefere colar o texto do currículo? Vá ao formulário →</a></p>
     </header>
 
     <!-- FORMULÁRIO -->
     <section id="form" class="panel form-panel">
-      <h2 class="form-title" data-i18n="form.title">Compare com a vaga</h2>
+      <h2 class="form-title" data-i18n="form.title">Análise grátis em 2 passos</h2>
 
       <label class="field">
-        <span data-i18n="form.cv">Currículo</span>
+        <span data-i18n="form.cv">1. Seu currículo</span>
         <span class="upload" id="uploadArea">
           <input type="file" id="cvFile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
           <span class="upload-box">
@@ -64,7 +66,12 @@
         </span>
       </label>
       <p id="fileInfo" class="file-info hidden"><span id="fileName"></span><button type="button" id="removeFile" data-i18n="form.remove">Remover</button></p>
-      <p class="privacy" data-i18n="form.privacy">🔒 Seu currículo é utilizado para realizar esta análise.</p>
+      <ul class="trust">
+        <li data-i18n="form.trust1">✓ Análise inicial grátis</li>
+        <li data-i18n="form.trust2">✓ Resultado em ~1 minuto</li>
+        <li data-i18n="form.trust3">✓ PDF ou DOCX · o arquivo não sai do seu navegador</li>
+      </ul>
+      <p class="privacy" data-i18n="form.privacy">🔒 Apenas o texto extraído é enviado para gerar a análise — nada é armazenado em definitivo.</p>
 
       <details class="paste-toggle">
         <summary data-i18n="form.pasteToggle">Prefere colar o texto do currículo?</summary>
@@ -72,8 +79,8 @@
       </details>
 
       <label class="field">
-        <span data-i18n="form.job">Descrição da vaga</span>
-        <textarea id="job" rows="6" data-i18n-ph="form.jobPlaceholder" placeholder="Cole aqui a descrição da vaga"></textarea>
+        <span data-i18n="form.job">2. Descrição da vaga</span>
+        <textarea id="job" rows="5" data-i18n-ph="form.jobPlaceholder" placeholder="Cole aqui a descrição da vaga (ex.: 'Desenvolvedor Front-end — React, TypeScript, experiência com APIs…')"></textarea>
       </label>
 
       <button id="analyze" class="cta cta-primary" type="button" data-i18n="form.analyze">Analisar compatibilidade →</button>
@@ -216,8 +223,8 @@
   </footer>
 
   <script src="/vendor-fflate.js"></script>
-  <script src="/i18n.js?v=1"></script>
+  <script src="/i18n.js?v=2"></script>
   <script src="/extract.js"></script>
-  <script src="/app.js?v=15"></script>
+  <script src="/app.js?v=16"></script>
 </body>
 </html>

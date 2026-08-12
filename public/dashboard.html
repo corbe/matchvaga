@@ -63,7 +63,7 @@
 
   <div class="footer">
     Dados do Cloudflare KV (<code>RESULTS</code>): chaves diárias <code>ev:&lt;etapa&gt;:&lt;data&gt;</code> (TTL 31 dias) e totais <code>evt:&lt;etapa&gt;</code> · fonte <code>/api/stats</code> · atualização a cada 30s.<br>
-    <b>Eventos vs. únicos:</b> <code>landing_view</code>, <code>analysis_started/completed</code>, <code>result_viewed</code>, <code>locked_insights_viewed</code>, <code>unlock_clicked</code>, <code>full_report_viewed</code> são <b>contagens de eventos</b> (refresh/retry podem inflar). <code>checkout_started</code> é <b>1 por análise</b> (sessão reutilizada via guard <code>ck:&lt;token&gt;</code>) e <code>payment_completed</code> é <b>1 por venda</b> (idempotente via guard <code>paid:&lt;token&gt;</code> — webhook reentregue não conta 2×). Receita = vendas × R$ 9,90.
+    <b>Eventos vs. únicos:</b> <code>landing_view</code>, <code>analysis_started/completed</code>, <code>result_viewed</code>, <code>locked_insights_viewed</code>, <code>unlock_clicked</code>, <code>full_report_viewed</code> são <b>contagens de eventos</b> (refresh/retry podem inflar). <code>session_view</code> é <b>1 por sessão de navegador</b> (refresh não repete). <code>checkout_started</code> é <b>1 por análise</b> (sessão reutilizada via guard <code>ck:&lt;token&gt;</code>) e <code>payment_completed</code> é <b>1 por venda</b> (idempotente via guard <code>paid:&lt;token&gt;</code> — webhook reentregue não conta 2×). Receita = vendas × R$ 9,90.
   </div>
 </div>
 <script src="/dashboard.js"></script>

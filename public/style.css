@@ -15,6 +15,13 @@ body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Robo
 .hero h1{font-size:clamp(26px,6vw,38px);line-height:1.14;margin:16px 0 12px;font-weight:900;letter-spacing:-.02em}
 .sub{font-size:17px;color:var(--muted);max-width:520px;margin:0 auto 24px}
 .hero-note{color:var(--faint);font-size:14px;font-weight:600;margin-top:12px}
+.hero-badge{display:inline-block;background:#e6f7f0;color:var(--green-dark);font-size:13px;font-weight:800;border-radius:99px;padding:6px 14px;margin-bottom:2px}
+.cta-hero{background:var(--green);font-size:18px;padding:17px 24px;box-shadow:0 8px 24px rgba(14,159,110,.25);margin-top:4px}
+.cta-hero:hover{background:var(--green-dark)}
+.hero .cta-hero{width:100%;max-width:420px}
+.hero-paste{margin-top:10px;font-size:14px}
+.hero-paste a{color:var(--muted);font-weight:700}
+.hero-paste a:hover{color:var(--ink)}
 
 /* ── Painéis ── */
 .panel{background:var(--card);border-radius:20px;padding:24px 20px;box-shadow:0 10px 34px rgba(16,24,40,.06);margin-top:20px}
@@ -43,6 +50,8 @@ body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Robo
 .file-info{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--soft);border-radius:12px;padding:10px 14px;margin-top:12px;font-size:14px;font-weight:700;word-break:break-all}
 .file-info button{border:0;background:none;color:var(--red);font-weight:800;cursor:pointer;font-size:14px;padding:6px 4px;min-height:40px}
 .privacy{margin-top:10px;font-size:13px;color:var(--muted);font-weight:600}
+.trust{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:center}
+.trust li{background:var(--soft);border-radius:99px;padding:6px 12px;font-size:12.5px;font-weight:700;color:var(--muted)}
 .paste-toggle{margin-top:14px;border-top:1px solid #eef1f5;padding-top:12px}
 .paste-toggle summary{cursor:pointer;font-size:14px;font-weight:700;color:var(--muted);padding:6px 0;min-height:40px;display:flex;align-items:center}
 .paste-toggle textarea{margin-top:10px}
@@ -164,6 +173,9 @@ tr:last-child td{border-bottom:0}
 @media(max-width:430px){
   .score{font-size:56px}
   textarea{font-size:16px}
+  .hero{padding:20px 4px 8px}
+  .hero h1{font-size:clamp(23px,6.5vw,30px)}
+  .sub{font-size:15.5px;margin-bottom:18px}
 }
 
 .footer-links{margin-top:10px;font-size:13px}
