@@ -1669,8 +1669,12 @@ const US_CANONICAL = "https://matchvaga.kubezen.com/us";
 // Tradução server-side do corpo (PT → en-US), casada com o dicionário "us"
 // do i18n.js. Só cobre o index.html estático; o conteúdo dinâmico (resultado
 // da IA, labels do resultado) vem do dicionário "us" no cliente.
+// PRIVACIDADE (auditada 13/08): o ARQUIVO é lido 100% no navegador (extract.js
+// não faz nenhuma chamada de rede — pdf.js/fflate locais) e NUNCA é enviado;
+// só o TEXTO extraído vai para /api/preview; o resultado (que embute o
+// optimized_cv) fica no KV por 24h (RESULT_TTL) e é removido automaticamente.
+// Nenhum texto de privacidade pode afirmar mais do que isso.
 const US_BODY_TRANSLATIONS: [string, string][] = [
-  ["✓ Análise grátis", "✓ Free initial analysis"],
   ["Descubra em 1 minuto se seu currículo está alinhado com a vaga.", "Is your resume showing why you're a good match for this job?"],
   ["Envie seu currículo, cole a descrição da vaga e veja na hora: o quanto você é compatível, o que já atende e o que pode melhorar antes de se candidatar.", "Compare your resume with the job requirements and see what's clearly demonstrated — and what may be underrepresented."],
   ["Analisar meu currículo grátis", "Analyze my resume"],
@@ -1681,9 +1685,8 @@ const US_BODY_TRANSLATIONS: [string, string][] = [
   ["Enviar PDF ou DOCX", "Upload PDF or DOCX"],
   ["clique para escolher o arquivo", "click to choose the file"],
   ["Remover", "Remove"],
-  ["✓ Análise inicial grátis", "✓ Free initial analysis"],
   ["✓ Resultado em ~1 minuto", "✓ No account required"],
-  ["✓ PDF ou DOCX · o arquivo não sai do seu navegador", "✓ PDF and DOCX supported · your file never leaves your browser"],
+  ["✓ PDF ou DOCX · o arquivo não sai do seu navegador", "✓ PDF and DOCX supported · your file is read locally — only the extracted text is sent"],
   ["🔒 Apenas o texto extraído é enviado para gerar a análise — nada é armazenado em definitivo.", "🔒 Your resume is used only to perform this analysis."],
   ["Prefere colar o texto do currículo?", "Prefer to paste your resume text?"],
   ["Cole aqui o texto do seu currículo...", "Paste your resume text here..."],
@@ -1733,7 +1736,7 @@ const US_BODY_TRANSLATIONS: [string, string][] = [
   ["O que acontece com meu currículo?", "What happens to my resume?"],
   ["O texto do seu currículo é usado apenas para gerar sua análise, fica armazenado temporariamente na infraestrutura da Cloudflare e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.", "Your resume text is used only to generate your analysis, is stored temporarily on Cloudflare's infrastructure and is automatically removed after 24 hours. It is not shared with third parties."],
   ["Aviso de privacidade:", "Privacy notice:"],
-  ["seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.", "your resume is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties."],
+  ["Seu arquivo é lido no seu navegador e nunca é enviado — apenas o texto extraído é usado para gerar sua análise. A análise é armazenada temporariamente e removida automaticamente após 24 horas.", "Your file is read in your browser and never uploaded — only the extracted text is used to generate your analysis. The analysis is stored temporarily and automatically removed after 24 hours."],
   [">Privacidade<", ">Privacy<"],
   [">Termos de uso<", ">Terms of use<"]
 ];
@@ -1772,6 +1775,12 @@ function injectUsLanding(html: string): string {
   // Seletor de idioma NÃO existe na página US (removido server-side — o
   // mercado define o idioma; evita flash das opções PT/ES antes do JS).
   out = out.replace(/\s*<label class="lang-sel">[\s\S]*?<\/label>/, "");
+  // "Free" uma única vez (spec #3): remove o badge "✓ Free initial analysis"
+  // acima da headline e o item "✓ Free initial analysis" da lista de confiança
+  // do formulário — o único "Free" é o hero.note ("Free initial analysis ·
+  // No signup required"). A versão BR mantém os elementos (tradução PT).
+  out = out.replace(/\s*<p class="hero-badge"[^>]*>[\s\S]*?<\/p>/, "");
+  out = out.replace(/\s*<li data-i18n="form\.trust1">[\s\S]*?<\/li>/, "");
   return out.replace("<head>", "<head>\n    " + meta);
 }
 

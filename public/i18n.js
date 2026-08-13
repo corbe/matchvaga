@@ -129,9 +129,10 @@
       "faq.a5": "Não. As sugestões utilizam somente informações reais fornecidas por você.",
       "faq.q6": "O que acontece com meu currículo?",
       "faq.a6": "O texto do seu currículo é usado apenas para gerar sua análise, fica armazenado temporariamente na infraestrutura da Cloudflare e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.",
-      // footer
-      "footer.privacy": "Aviso de privacidade: seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.",
-      "footer.privacyBody": "seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.",
+      // footer (privacy UMA vez — label + body separados; antes o label
+      // duplicava o corpo inteiro no mesmo parágrafo)
+      "footer.privacy": "Aviso de privacidade:",
+      "footer.privacyBody": "Seu arquivo é lido no seu navegador e nunca é enviado — apenas o texto extraído é usado para gerar sua análise. A análise é armazenada temporariamente e removida automaticamente após 24 horas.",
       "footer.linkPrivacy": "Privacidade",
       "footer.linkTerms": "Termos de uso",
       // dashboard
@@ -333,7 +334,8 @@
       "dash.cInsightsCheckout": "insights → checkout",
       "dash.cCheckoutPaid": "checkout → payment",
       "dash.cSessPaid": "session → payment",
-      "footer.privacy": "Privacy notice: your résumé is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties.",
+      "footer.privacy": "Privacy notice:",
+      "footer.privacyBody": "Your file is read in your browser and never uploaded — only the extracted text is used to generate your analysis. The analysis is stored temporarily and automatically removed after 24 hours.",
       "footer.linkPrivacy": "Privacy",
       "footer.linkTerms": "Terms of use"
     },
@@ -461,7 +463,8 @@
       "dash.cInsightsCheckout": "insights → checkout",
       "dash.cCheckoutPaid": "checkout → pago",
       "dash.cSessPaid": "sesión → pago",
-      "footer.privacy": "Aviso de privacidad: tu currículum se usa exclusivamente para generar tu análisis, se almacena temporalmente y se elimina automáticamente después de 24 horas. No se comparte con terceros.",
+      "footer.privacy": "Aviso de privacidad:",
+      "footer.privacyBody": "Tu archivo se lee en tu navegador y nunca se envía — solo el texto extraído se usa para generar tu análisis. El análisis se almacena temporalmente y se elimina automáticamente después de 24 horas.",
       "footer.linkPrivacy": "Privacidad",
       "footer.linkTerms": "Términos de uso"
     },
@@ -483,7 +486,7 @@
       "form.remove": "Remove",
       "form.trust1": "✓ Free initial analysis",
       "form.trust2": "✓ No account required",
-      "form.trust3": "✓ PDF and DOCX supported · your file never leaves your browser",
+      "form.trust3": "✓ PDF and DOCX supported · your file is read locally — only the extracted text is sent",
       "form.privacy": "🔒 Your resume is used only to perform this analysis.",
       "form.pasteToggle": "Prefer to paste your resume text?",
       "form.cvPlaceholder": "Paste your resume text here...",
@@ -589,9 +592,9 @@
       "faq.a5": "No. Every suggestion uses only real information from the resume you provide.",
       "faq.q6": "What happens to my resume?",
       "faq.a6": "Your resume text is used only to generate your analysis, is stored temporarily on Cloudflare's infrastructure and is automatically removed after 24 hours. It is not shared with third parties.",
-      // footer
-      "footer.privacy": "Privacy notice: your resume is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties.",
-      "footer.privacyBody": "your resume is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties.",
+      // footer (privacy UMA vez — label + body; antes o label duplicava o corpo)
+      "footer.privacy": "Privacy notice:",
+      "footer.privacyBody": "Your file is read in your browser and never uploaded — only the extracted text is used to generate your analysis. The analysis is stored temporarily and automatically removed after 24 hours.",
       "footer.linkPrivacy": "Privacy",
       "footer.linkTerms": "Terms of use"
     }
