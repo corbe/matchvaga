@@ -24,6 +24,9 @@ OPENAI_MODEL = "deepseek-v4-flash"
 PRICE_BRL = "9,90"
 PRICE_USD = "2.99"
 PIX_KEY = "CONFIGURE_SUA_CHAVE_PIX"
+# Instrumentação v2 (funil de sessões únicas + checkout_session_created +
+# receita real): métricas confiáveis a partir deste instante.
+RELIABLE_SINCE = "2026-08-12T05:00:00Z"
 # Anti-abuso: máx. análises grátis por IP/hora e teto global diário.
 RATE_LIMIT_PER_HOUR = "3"
 DAILY_PREVIEW_BUDGET = "100"

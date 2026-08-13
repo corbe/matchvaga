@@ -15,6 +15,7 @@ interface Env {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   ALERT_WEBHOOK_URL: string;
+  RELIABLE_SINCE?: string; // instrumentação v2 — métricas confiáveis a partir de
 }
 
 type Strength = { requirement: string; explanation: string };
@@ -126,22 +127,67 @@ async function contentHash(cv: string, job: string, lang = "pt", market: Market 
 
 // ── Funil de conversão (agregado, sem dados pessoais) ────────────
 // Etapas medidas. Contadores por dia (TTL 31d) e totais (sem TTL).
+// Semântica v2 (12/08): o funil usa ENTIDADES ÚNICAS (sessões de navegador,
+// guard `seen:<stage>:<sid>`), não contagem bruta de eventos. Eventos brutos
+// continuam em ev:/evt: (pageviews/KPI), o funil lê evu:/evut:.
+// `checkout_session_created` = SÓ depois que a API da Stripe retorna uma
+// Checkout Session válida (substitui o antigo `checkout_started`, que era
+// semântica correta mas nome errado — e tinha um artefato de teste contando).
+// `checkout_error` = falha na criação da sessão (sem dados sensíveis).
 const FUNNEL_STAGES = [
   "session_view",
   "landing_view",
-  "analysis_started",
   "resume_uploaded",
   "job_description_added",
+  "analysis_started",
   "analysis_completed",
   "result_viewed",
   "free_insight_viewed",
   "locked_insights_viewed",
   "unlock_clicked",
   "checkout_started",
+  "checkout_session_created",
+  "checkout_error",
   "payment_completed",
   "full_report_viewed"
 ] as const;
 type FunnelStage = (typeof FUNNEL_STAGES)[number];
+
+// Contador de SESSÕES ÚNICAS por etapa: cada session_id conta no máximo UMA
+// VEZ por etapa (refreshes/retries não inflam — o guard `seen:` segura).
+// Refresh não transforma uma pessoa em cinco conversões.
+async function bumpUnique(env: Env, stage: FunnelStage, market: Market, sid: string) {
+  if (!sid || sid.length < 8 || sid.length > 80) return;
+  const seenKey = `seen:${stage}:${sid}`;
+  if (await env.RESULTS.get(seenKey)) return;
+  await env.RESULTS.put(seenKey, "1", { expirationTtl: 31 * 86400 });
+  const day = new Date().toISOString().slice(0, 10);
+  const [d, t] = await Promise.all([
+    kvCount(env, `evu:${market}:${stage}:${day}`),
+    kvCount(env, `evut:${market}:${stage}`)
+  ]);
+  await env.RESULTS.put(`evu:${market}:${stage}:${day}`, String(d + 1), { expirationTtl: 86400 * 31 });
+  await env.RESULTS.put(`evut:${market}:${stage}`, String(t + 1));
+}
+
+// ── Bots/crawlers/link previews ──────────────────────────────────
+// landing_view NÃO deve contar tráfego claramente automatizado (crawlers,
+// link previews de WhatsApp/Telegram/Facebook, health checks, scanners).
+// Heurística simples de User-Agent — sem sistema complexo de antifraude.
+const BOT_UA = /bot|crawl|spider|slurp|facebookexternalhit|twitterbot|whatsapp|telegram|discordbot|linkedinbot|slackbot|preview|headless|curl|wget|python-requests|go-http-client|java\/|libwww|scrapy|ahrefs|semrush|mj12|petalbot|bingbot|duckduckbot|yandex|baiduspider|applebot|googlebot|google-inspectiontool|pingdom|uptimerobot|monitor|check-host|360spider|sogou|exabot|archive\.org/i;
+function isBotRequest(request: Request): boolean {
+  const ua = request.headers.get("user-agent") || "";
+  return BOT_UA.test(ua);
+}
+
+// Tráfego de teste (diagnóstico interno) NÃO contamina o dashboard comercial:
+// o cliente marca a sessão com `?mv_test=1` → sessionStorage `mv-test` → todo
+// evento/checkout carrega `test:true`. O servidor grava `tst:<token>` no
+// checkout e pula os contadores comerciais (bump/bumpUnique). Pagamentos de
+// teste também não contam (webhook checa tst:<token>). Não depende de IP.
+function isTestRequest(body: any): boolean {
+  return body?.test === true || body?.test === "1" || body?.test === 1;
+}
 
 // ── Mercado (experimento BR vs US) ───────────────────────────────
 // Dimensão de mercado em TODOS os contadores: `ev:<mkt>:<etapa>:<dia>`.
@@ -174,6 +220,21 @@ async function bump(env: Env, stage: FunnelStage, market: Market = "br") {
   const [dayCount, totalCount] = await Promise.all([kvCount(env, dayKey), kvCount(env, totalKey)]);
   await env.RESULTS.put(dayKey, String(dayCount + 1), { expirationTtl: 86400 * 31 });
   await env.RESULTS.put(totalKey, String(totalCount + 1));
+}
+
+// Atribuição de tráfego (UTM) no SERVIDOR, a partir da URL do GET / — o único
+// lugar onde o utm_source da campanha chega (o cliente não envia landing_view
+// pelo /api/event; o código antigo fazia o ev:utm: só lá → fontes zeradas).
+async function bumpLandingUtm(env: Env, url: URL, market: Market) {
+  const utmSource = String(url.searchParams.get("utm_source") || url.searchParams.get("utm_medium") || "")
+    .replace(/[^\w.-]/g, "").slice(0, 40);
+  if (!utmSource) return;
+  const day = new Date().toISOString().slice(0, 10);
+  const dayKey = `ev:utm:${market}:${utmSource}:${day}`;
+  const totalKey = `ev:utm:${market}:${utmSource}:total`;
+  const [d, t] = await Promise.all([kvCount(env, dayKey), kvCount(env, totalKey)]);
+  await env.RESULTS.put(dayKey, String(d + 1), { expirationTtl: 31 * 86400 });
+  await env.RESULTS.put(totalKey, String(t + 1));
 }
 
 // Tentativa ÚNICA com timeout generoso: duas tentativas de 14s ultrapassam o
@@ -560,7 +621,11 @@ async function handleCheckout(request: Request, env: Env) {
 
   const lang = String(body?.lang || "pt").slice(0, 2);
   const token = String(body?.token || "");
-  if (!/^[0-9a-f]{48}$/.test(token)) {
+  const sid = String(body?.sid || "").slice(0, 80);
+  const isTest = isTestRequest(body);
+  // Token todo-zero (artefato de teste 11/08: 48 zeros passavam o regex e
+  // criavam sessão real na Stripe) — rejeita antes de qualquer efeito.
+  if (!/^[0-9a-f]{48}$/.test(token) || /^0+$/.test(token)) {
     return json({ error: smsg(lang, "session_expired") }, 400);
   }
   // Mercado do token vem do servidor (fixado na criação da análise). O market
@@ -599,7 +664,7 @@ async function handleCheckout(request: Request, env: Env) {
   await env.RESULTS.put(`result:${token}`, raw, { expirationTtl: RESULT_TTL });
 
   // Checkout idempotente: duplo clique/refresh reusa a MESMA sessão Stripe e
-  // não infla checkout_started (um checkout por análise).
+  // não infla checkout_session_created (um checkout por análise).
   const existing = await env.RESULTS.get(`ck:${token}`);
   if (existing) {
     return json({ url: existing });
@@ -615,6 +680,7 @@ async function handleCheckout(request: Request, env: Env) {
   form.set("cancel_url", `${origin}${returnPath}?checkout=cancel`);
   form.set("metadata[token]", token);
   form.set("metadata[market]", market);
+  if (isTest) form.set("metadata[test]", "1");
   form.set("line_items[0][quantity]", "1");
   form.set("line_items[0][price_data][currency]", marketCurrency(market));
   form.set("line_items[0][price_data][unit_amount]", String(priceToCents(marketPrice(env, market))));
@@ -630,12 +696,33 @@ async function handleCheckout(request: Request, env: Env) {
   });
 
   const data: any = await res.json();
-  if (!res.ok || !data?.url) {
+  if (!res.ok || !data?.url || !data?.id) {
+    // checkout_error: falha na CRIAÇÃO da sessão (sem dados sensíveis).
+    // Categorias técnicas: stripe_<http>, timeout, invalid_config, internal.
+    let errType = "stripe_" + res.status;
+    if (res.status >= 500) errType = "stripe_server_" + res.status;
+    else if (res.status === 400 || res.status === 404) errType = "stripe_invalid_" + (data?.error?.code || res.status);
     console.error("Stripe error", res.status, JSON.stringify(data));
+    if (!isTest) {
+      await bump(env, "checkout_error", market);
+      await bumpUnique(env, "checkout_error", market, sid || token);
+      await env.RESULTS.put(`ce:${token}`, errType, { expirationTtl: RESULT_TTL });
+    }
     return json({ error: smsg(lang, "payment_failed") }, 502);
   }
   await env.RESULTS.put(`ck:${token}`, data.url, { expirationTtl: RESULT_TTL });
-  await bump(env, "checkout_started", market);
+  // Guarda o ID da sessão Stripe (auditoria + diagnóstico: o dashboard mostra
+  // "Checkout criado" como uma sessão REAL na Stripe, não um clique).
+  await env.RESULTS.put(`cs:${token}`, String(data.id), { expirationTtl: RESULT_TTL });
+  if (isTest) {
+    await env.RESULTS.put(`tst:${token}`, "1", { expirationTtl: RESULT_TTL });
+  }
+  if (!isTest) {
+    // checkout_session_created = sessão REAL devolvida pela API da Stripe.
+    // Conta UMA vez por sessão de navegador (bumpUnique) + total bruto.
+    await bump(env, "checkout_session_created", market);
+    await bumpUnique(env, "checkout_session_created", market, sid || token);
+  }
   return json({ url: data.url });
 }
 
@@ -686,23 +773,65 @@ async function handleStripeWebhook(request: Request, env: Env) {
   const type = payload?.type;
   // PIX via Stripe é assíncrono: cobre os dois eventos de sucesso.
   if (type === "checkout.session.completed" || type === "checkout.session.async_payment_succeeded") {
-    const token = String(payload?.data?.object?.metadata?.token || "");
+    const session = payload?.data?.object || {};
+    const token = String(session?.metadata?.token || "");
     // Mercado vem do metadata da sessão Stripe (fonte confiável — o cliente
     // não decide a atribuição da venda depois do pagamento).
-    const market = normMarket(payload?.data?.object?.metadata?.market);
-    if (/^[0-9a-f]{48}$/.test(token)) {
-      // Idempotente: webhooks do Stripe são reentregues — não conta pagamento 2x.
+    const market = normMarket(session?.metadata?.market);
+    // Pagamento de teste (diagnóstico interno) NÃO conta como venda real.
+    const isTest = session?.metadata?.test === "1";
+    if (/^[0-9a-f]{48}$/.test(token) && !/^0+$/.test(token) && !isTest) {
+      // Idempotência dupla:
+      // 1) paid:<token> — o desbloqueio da análise (o que o usuário consome);
+      // 2) pi:<payment_intent> — rejeita contabilização duplicada mesmo se o
+      //    Stripe reentregar o MESMO evento 5x (uma venda = EXATAMENTE uma).
+      //    Payment Intent é o identificador único do pagamento; session.id
+      //    também serve (checkout sem PI, ex. PIX ainda pendente).
+      const piId = String(session?.payment_intent || session?.id || "");
+      const piKey = `pi:${piId}`;
+      if (await env.RESULTS.get(piKey)) {
+        // Já contabilizado — reentrega do webhook.
+        return json({ received: true });
+      }
       const already = await env.RESULTS.get(`paid:${token}`);
       if (already !== "1") {
         await env.RESULTS.put(`paid:${token}`, "1", { expirationTtl: RESULT_TTL });
+        // Registro da venda (sem dados sensíveis): payment_id, amount,
+        // currency, market, analysis_id — a receita NUNCA é count × preço
+        // (preços/moedas podem variar BR×US e no futuro), é a soma dos
+        // pagamentos reais confirmados.
+        const amountTotal = Number(session?.amount_total) || 0;
+        const currency = String(session?.currency || "").toLowerCase();
+        await env.RESULTS.put(
+          `pay:${token}`,
+          JSON.stringify({
+            payment_id: piId,
+            amount: amountTotal,
+            currency,
+            market,
+            analysis_id: token,
+            ts: Date.now()
+          }),
+          { expirationTtl: 90 * 86400 }
+        );
+        // Guarda o PI idempotente DEPOIS de gravar (a venda conta 1x).
+        await env.RESULTS.put(piKey, token, { expirationTtl: 90 * 86400 });
         const utmSrc = await env.RESULTS.get(`utm:${token}`);
         if (utmSrc) {
           const uday = new Date().toISOString().slice(0, 10);
           await env.RESULTS.put(`ev:utm-paid:${market}:${utmSrc}:${uday}`, String((await kvCount(env, `ev:utm-paid:${market}:${utmSrc}:${uday}`)) + 1), { expirationTtl: 31 * 86400 });
           await env.RESULTS.put(`ev:utm-paid:${market}:${utmSrc}:total`, String((await kvCount(env, `ev:utm-paid:${market}:${utmSrc}:total`)) + 1));
         }
-        console.log(`[stripe] pagamento confirmado para token ${token.slice(0, 8)}… (${market})`);
+        console.log(`[stripe] pagamento confirmado para token ${token.slice(0, 8)}… (${market}, ${currency} ${amountTotal})`);
         await bump(env, "payment_completed", market);
+        // payment_completed no funil de sessões únicas: recupera o sid da
+        // análise (guardado no /api/preview) e conta 1x por sessão.
+        const analysisSid = await env.RESULTS.get(`sid:${token}`);
+        await bumpUnique(env, "payment_completed", market, analysisSid || token);
+      } else {
+        // Já desbloqueado (paid: presente) mas PI novo: ainda grava o PI
+        // idempotente para o caso de um webhook duplicado chegar depois.
+        await env.RESULTS.put(piKey, token, { expirationTtl: 90 * 86400 });
       }
     }
   }
@@ -760,6 +889,8 @@ async function handlePreview(request: Request, env: Env) {
   const market = normMarket(body?.market);
   // "us" nunca chega como lang (o cliente envia "en"); defesa extra:
   const langClean = lang === "us" ? "en" : lang;
+  const sid = String(body?.sid || "").slice(0, 80);
+  const isTest = isTestRequest(body);
   const utmSource = String(body?.utm?.source || "").replace(/[^\w.-]/g, "").slice(0, 40);
   const cv = String(body?.cv || "").trim();
   const job = String(body?.job || "").trim();
@@ -784,8 +915,6 @@ async function handlePreview(request: Request, env: Env) {
     return json({ error: "Verificação anti-bot falhou. Recarregue e tente novamente." }, 400);
   }
 
-  await bump(env, "analysis_started", market);
-
   try {
     const now = new Date();
     const day = now.toISOString().slice(0, 10);
@@ -803,6 +932,14 @@ async function handlePreview(request: Request, env: Env) {
     const perHourLimit = parseNum(env.RATE_LIMIT_PER_HOUR) || 3;
     if ((await checkAndIncrement(env, `rl:${clientIp(request)}:${hour}`, perHourLimit, 3700)) === null) {
       return json({ error: smsg(langClean, "rate_limited") }, 429);
+    }
+
+    // analysis_started DEPOIS dos gates de conteúdo/budget/rate-limit:
+    // pedidos rejeitados (429, texto inválido) NÃO contam como análise
+    // iniciada — o funil mede inícios REAIS.
+    if (!isTest) {
+      await bump(env, "analysis_started", market);
+      await bumpUnique(env, "analysis_started", market, sid);
     }
 
     // 3) Cache por hash: análises idênticas repetidas não gastam créditos de novo.
@@ -831,11 +968,22 @@ async function handlePreview(request: Request, env: Env) {
     // Mercado do token fixado no servidor: o checkout usa SEMPRE este valor
     // (o market do body é só fallback) — evita precificar análise US em BRL.
     await env.RESULTS.put(`mkt:${token}`, market, { expirationTtl: RESULT_TTL });
+    // Sessão que gerou a análise: usada pelo webhook p/ o funil de sessões
+    // únicas (payment_completed conta 1x por sessão, não por webhook).
+    if (sid) {
+      await env.RESULTS.put(`sid:${token}`, sid, { expirationTtl: RESULT_TTL });
+    }
+    if (isTest) {
+      await env.RESULTS.put(`tst:${token}`, "1", { expirationTtl: RESULT_TTL });
+    }
     if (utmSource) {
       await env.RESULTS.put(`utm:${token}`, utmSource, { expirationTtl: RESULT_TTL });
     }
 
-    await bump(env, "analysis_completed", market);
+    if (!isTest) {
+      await bump(env, "analysis_completed", market);
+      await bumpUnique(env, "analysis_completed", market, sid);
+    }
 
     // GRÁTIS = descoberta: score, resumo curto, 3 pontos fortes, contagem e
     // títulos dos pontos de atenção + UM gap explicado em detalhe. Nada de
@@ -920,6 +1068,8 @@ async function handleUnlock(request: Request, env: Env) {
 }
 
 // Eventos de funil vindos do cliente (sem dados pessoais — só contadores).
+// v2: cada etapa conta no máximo UMA VEZ por sessão de navegador (sid), o
+// cliente manda o sid que ele mesmo gerou; refreshes não multiplicam usuários.
 async function handleEvent(request: Request, env: Env) {
   let body: any;
   try {
@@ -932,12 +1082,21 @@ async function handleEvent(request: Request, env: Env) {
     return json({ error: "Evento desconhecido." }, 400);
   }
   const market = normMarket(body?.market);
+  const sid = String(body?.sid || "").slice(0, 80);
+  const isTest = isTestRequest(body);
   const hour = new Date().toISOString().slice(0, 13);
   if ((await checkAndIncrement(env, `rl-ev:${clientIp(request)}:${hour}`, 60, 3700)) === null) {
     return json({ ok: true }); // silencioso sob rate limit
   }
-  await bump(env, stage as FunnelStage, market);
+  if (!isTest) {
+    await bump(env, stage as FunnelStage, market);
+    await bumpUnique(env, stage as FunnelStage, market, sid);
+  }
   // Atribuição de tráfego (UTM) — só contadores por fonte, nunca conteúdo.
+  // Corrigido 12/08: o antigo só contava quando stage === "landing_view", mas
+  // o cliente NUNCA envia esse stage (é server-side no GET /) → fontes sempre
+  // zeradas. Agora a atribuição é feita no GET / (servidor, com o UTM da URL);
+  // aqui mantemos o fallback caso o cliente reporte um stage com utm.
   const utmSource = String(body?.utm?.source || "").replace(/[^\w.-]/g, "").slice(0, 40);
   if (utmSource && stage === "landing_view") {
     const day = new Date().toISOString().slice(0, 10);
@@ -963,16 +1122,24 @@ async function handleStatus(env: Env) {
 
 const ratePct = (from: number, to: number) => (from > 0 ? `${Math.round((to / from) * 100)}%` : null);
 
+// Conversões do funil v2 — TODAS sobre sessões únicas (evu:/evut:):
+// - conv da etapa = únicos na etapa / únicos na etapa ANTERIOR
+// - conv total = únicos na etapa / sessões válidas (session_view)
+// - drop = 1 - conv p/ a próxima etapa (NUNCA negativo: se a próxima tiver
+//   MAIS únicos que a atual, os eventos não são comparáveis → "—")
+// O funil NÃO mistura landing_view (pageviews) com sessões.
 const CONV_PAIRS: [string, string, string][] = [
-  ["landing_view", "analysis_started", "landing→analysis"],
-  ["analysis_started", "analysis_completed", "analysis→completed"],
-  ["analysis_completed", "result_viewed", "completed→result"],
-  ["result_viewed", "locked_insights_viewed", "result→insights"],
+  ["session_view", "resume_uploaded", "sessão→upload"],
+  ["resume_uploaded", "job_description_added", "upload→vaga"],
+  ["job_description_added", "analysis_started", "vaga→análise"],
+  ["analysis_started", "analysis_completed", "análise→concluída"],
+  ["analysis_completed", "result_viewed", "concluída→resultado"],
+  ["result_viewed", "locked_insights_viewed", "resultado→insights"],
   ["locked_insights_viewed", "unlock_clicked", "insights→unlock"],
-  ["unlock_clicked", "checkout_started", "unlock→checkout"],
-  ["checkout_started", "payment_completed", "checkout→paid"],
-  ["payment_completed", "full_report_viewed", "paid→report"],
-  ["landing_view", "payment_completed", "landing→paid"]
+  ["unlock_clicked", "checkout_session_created", "unlock→checkout"],
+  ["checkout_session_created", "payment_completed", "checkout→pago"],
+  ["payment_completed", "full_report_viewed", "pago→relatório"],
+  ["session_view", "payment_completed", "sessão→venda"]
 ];
 
 function buildConv(t: Record<string, number>): Record<string, string> {
@@ -986,24 +1153,56 @@ function buildConv(t: Record<string, number>): Record<string, string> {
 
 // Lê os contadores de UM mercado. BR inclui as chaves LEGADAS sem prefixo
 // (pré-mercado, 11/08) para não perder o histórico.
+// v2: o funil lê as chaves de SESSÕES ÚNICAS (evu:/evut:); as chaves brutas
+// (ev:/evt:) continuam disponíveis como eventos/pageviews (KPI secundário).
 async function readMarketStats(env: Env, m: Market, day: string, dates: string[], daysParam: number) {
   const today: Record<string, number> = {};
   const total: Record<string, number> = {};
   const window: Record<string, number> = {};
+  const rawWindow: Record<string, number> = {};
   const isBr = m === "br";
   for (const stage of FUNNEL_STAGES) {
-    today[stage] = await kvCount(env, `ev:${m}:${stage}:${day}`);
-    total[stage] = await kvCount(env, `evt:${m}:${stage}`);
+    // Únicos (funil)
+    today[stage] = await kvCount(env, `evu:${m}:${stage}:${day}`);
+    total[stage] = await kvCount(env, `evut:${m}:${stage}`);
     let sum = 0;
-    for (const d of dates) sum += await kvCount(env, `ev:${m}:${stage}:${d}`);
+    for (const d of dates) sum += await kvCount(env, `evu:${m}:${stage}:${d}`);
     if (isBr) {
-      today[stage] += await kvCount(env, `ev:${stage}:${day}`);
-      total[stage] += await kvCount(env, `evt:${stage}`);
-      for (const d of dates) sum += await kvCount(env, `ev:${stage}:${d}`);
+      today[stage] += await kvCount(env, `evu:${stage}:${day}`);
+      total[stage] += await kvCount(env, `evut:${stage}`);
+      for (const d of dates) sum += await kvCount(env, `evu:${stage}:${d}`);
     }
     window[stage] = daysParam > 0 ? sum : total[stage];
+    // Brutos (eventos/pageviews — KPI secundário)
+    let rawSum = 0;
+    for (const d of dates) rawSum += await kvCount(env, `ev:${m}:${stage}:${d}`);
+    if (isBr) for (const d of dates) rawSum += await kvCount(env, `ev:${stage}:${d}`);
+    rawWindow[stage] = daysParam > 0 ? rawSum : await kvCount(env, `evt:${m}:${stage}`) + (isBr ? await kvCount(env, `evt:${stage}`) : 0);
   }
-  return { window, today, total, conv: buildConv(window) };
+  return { window, today, total, rawWindow, conv: buildConv(window) };
+}
+
+// Receita = soma dos PAGAMENTOS REAIS confirmados (registro pay:<token> com
+// amount/currency/market), nunca count × preço. Filtra pelo período.
+async function readRevenue(env: Env, dates: string[], daysParam: number, market: Market | "all") {
+  const rev = { br: { amount: 0, count: 0 }, us: { amount: 0, count: 0 } };
+  const keys = await env.RESULTS.list({ prefix: "pay:" });
+  const since = daysParam > 0 ? Date.now() - daysParam * 86400000 : 0;
+  for (const k of keys.keys) {
+    const raw = await env.RESULTS.get(k.name);
+    if (!raw) continue;
+    try {
+      const rec = JSON.parse(raw);
+      if (daysParam > 0 && !(rec.ts >= since)) continue;
+      const m: Market = normMarket(rec.market);
+      if (market !== "all" && m !== market) continue;
+      rev[m].amount += Number(rec.amount) || 0;
+      rev[m].count += 1;
+    } catch {
+      // registro inválido — ignora
+    }
+  }
+  return rev;
 }
 
 // Fontes de tráfego (UTM) por mercado; "all" soma BR + US (+ legado em BR).
@@ -1071,15 +1270,36 @@ async function handleStats(env: Env, url: URL) {
   const window = selected === "all" ? merge(br.window, us.window) : selected === "us" ? us.window : br.window;
   const today = selected === "all" ? merge(br.today, us.today) : selected === "us" ? us.today : br.today;
   const total = selected === "all" ? merge(br.total, us.total) : selected === "us" ? us.total : br.total;
+  const rawWindow = selected === "all" ? merge(br.rawWindow, us.rawWindow) : selected === "us" ? us.rawWindow : br.rawWindow;
+
+  // Diagnóstico do checkout (seção técnica): distingue abandono comercial de
+  // erro técnico — Caso A (unlocks sem sessões) = bug de criação; Caso B
+  // (sessões sem pagamentos) = abandono no Stripe; Caso C = checkout ok.
+  const checkout = {
+    unlock_clicked: window.unlock_clicked || 0,
+    checkout_session_created: window.checkout_session_created || 0,
+    checkout_error: window.checkout_error || 0,
+    payment_completed: window.payment_completed || 0
+  };
+
+  const revenue = await readRevenue(env, dates, daysParam, selected);
 
   return json({
     day,
     days: daysParam,
     market: selected,
+    // Métricas confiáveis a partir de: instrumentação v2 (sessões únicas +
+    // checkout_session_created + receita real). Antes disso, os dados misturam
+    // pageviews com eventos e não devem basear decisão comercial.
+    reliable_since: env.RELIABLE_SINCE || "",
     sources: await readSources(env, dates, daysParam, selected),
     window,
     today,
     total,
+    // Pageviews/eventos brutos (KPI secundário — não entram no funil).
+    raw: { window: rawWindow, today, total },
+    checkout,
+    revenue,
     conv: buildConv(window),
     convTotal: buildConv(total),
     // Comparação BR vs US (sempre presente — o dashboard usa p/ o experimento).
@@ -1224,15 +1444,25 @@ export default {
       return handleConfig(env, url);
     }
 
-    // /us = landing americana (experimento). Conta landing_view no mercado US e
-    // serve o MESMO index.html com head en-US injetado (SEO + meta mv-market).
+    // /us = landing americana (experimento). landing_view NO mercado US conta
+    // só navegação HUMANA real: bots/crawlers/link previews são ignorados e o
+    // retorno do Stripe (?checkout=success|cancel) NÃO é uma visita nova.
     if (request.method === "GET" && url.pathname === "/us") {
-      await bump(env, "landing_view", "us");
+      if (!isBotRequest(request) && !url.searchParams.has("checkout")) {
+        await bump(env, "landing_view", "us");
+        await bumpLandingUtm(env, url, "us");
+      }
       return serveLanding(env, url, request, "us");
     }
 
     if (request.method === "GET" && url.pathname === "/") {
-      await bump(env, "landing_view", "br");
+      // landing_view v2: NÃO conta refresh/bots/retorno do Stripe. O funil
+      // principal começa em session_view (sessões únicas, client-side);
+      // landing_view é KPI secundário = pageviews válidos.
+      if (!isBotRequest(request) && !url.searchParams.has("checkout")) {
+        await bump(env, "landing_view", "br");
+        await bumpLandingUtm(env, url, "br");
+      }
     }
 
     const asset = await env.ASSETS.fetch(request);

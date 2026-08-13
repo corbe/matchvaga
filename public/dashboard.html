@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title data-i18n="dash.title">MatchVaga · Funil</title>
 <link rel="stylesheet" href="/dashboard.css">
-<script src="/i18n.js?v=1"></script>
+<script src="/i18n.js?v=2"></script>
 </head>
 <body>
 <div class="wrap">
@@ -20,6 +20,7 @@
 </div>
   <p class="sub" data-i18n="dash.sub">Onde os usuários estão abandonando?</p>
   <p class="updated" id="updated"></p>
+  <p class="reliable" id="reliableSince" style="display:none"></p>
 
   <div class="market" id="market">
     <span class="market-lbl" data-i18n="dash.mLbl">Mercado:</span>
@@ -36,18 +37,30 @@
   </div>
 
   <div class="kpis" id="kpis">
-    <div class="kpi"><div class="lbl" data-i18n="dash.kVisitas">Visitas</div><div class="val" id="kVisitas">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kVisitas">Visitas (pageviews)</div><div class="val" id="kVisitas">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kSessions">Sessões únicas</div><div class="val" id="kSessions">–</div></div>
     <div class="kpi"><div class="lbl" data-i18n="dash.kAnalises">Análises</div><div class="val" id="kAnalises">–</div></div>
     <div class="kpi"><div class="lbl" data-i18n="dash.kUnlock">Unlock</div><div class="val" id="kUnlock">–</div></div>
-    <div class="kpi"><div class="lbl" data-i18n="dash.kCheckout">Checkout</div><div class="val" id="kCheckout">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kCheckout">Checkout criado</div><div class="val" id="kCheckout">–</div></div>
     <div class="kpi"><div class="lbl" data-i18n="dash.kVendas">Vendas</div><div class="val" id="kVendas">–</div></div>
-    <div class="kpi"><div class="lbl" data-i18n="dash.kConv">Conversão</div><div class="val" id="kConv">–</div></div>
+    <div class="kpi"><div class="lbl" data-i18n="dash.kConv">Conv. sessão→venda</div><div class="val" id="kConv">–</div></div>
     <div class="kpi"><div class="lbl" data-i18n="dash.kReceita">Receita</div><div class="val" id="kReceita">–</div></div>
   </div>
 
   <div class="card">
-    <h2 data-i18n="dash.funnel">Funil</h2>
+    <h2 data-i18n="dash.funnel">Funil (sessões únicas)</h2>
     <div id="funnel"><div class="empty">carregando…</div></div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="dash.checkoutTitle">Diagnóstico do checkout</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th data-i18n="dash.thStage">Etapa</th><th data-i18n="dash.thQty">Quantidade</th></tr></thead>
+        <tbody id="checkoutBody"></tbody>
+      </table>
+    </div>
+    <p class="checkout-note" id="checkoutNote"></p>
   </div>
 
   <div class="card">
@@ -62,7 +75,7 @@
     <h2 data-i18n="dash.table">Tabela de conversão</h2>
     <div style="overflow-x:auto">
       <table>
-        <thead><tr><th data-i18n="dash.thStage">Etapa</th><th data-i18n="dash.thQty">Quantidade</th><th data-i18n="dash.thPrev">Conv. anterior</th><th data-i18n="dash.thTotal">Conv. total</th><th data-i18n="dash.thDrop">Drop p/ próxima</th></tr></thead>
+        <thead><tr><th data-i18n="dash.thStage">Etapa</th><th data-i18n="dash.thQty">Sessões únicas</th><th data-i18n="dash.thPrev">Conv. etapa</th><th data-i18n="dash.thTotal">Conv. total</th><th data-i18n="dash.thDrop">Drop p/ próxima</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
@@ -80,8 +93,8 @@
   </div>
 
   <div class="footer">
-    Dados do Cloudflare KV (<code>RESULTS</code>): chaves diárias <code>ev:&lt;mercado&gt;:&lt;etapa&gt;:&lt;data&gt;</code> (TTL 31 dias) e totais <code>evt:&lt;mercado&gt;:&lt;etapa&gt;</code> · mercado = <code>br</code> (inclui chaves legadas sem prefixo) ou <code>us</code> · fonte <code>/api/stats</code> · atualização a cada 30s.<br>
-    <b>Eventos vs. únicos:</b> <code>landing_view</code>, <code>analysis_started/completed</code>, <code>result_viewed</code>, <code>locked_insights_viewed</code>, <code>unlock_clicked</code>, <code>full_report_viewed</code> são <b>contagens de eventos</b> (refresh/retry podem inflar). <code>session_view</code> é <b>1 por sessão de navegador</b> (refresh não repete). <code>checkout_started</code> é <b>1 por análise</b> (sessão reutilizada via guard <code>ck:&lt;token&gt;</code>) e <code>payment_completed</code> é <b>1 por venda</b> (idempotente via guard <code>paid:&lt;token&gt;</code> — webhook reentregue não conta 2×). Receita = vendas BR × R$ 9,90 + vendas US × $2,99.
+    Funil v2 (12/08): <b>sessões únicas</b> por etapa (chaves <code>evu:</code>/<code>evut:</code>, dedup por <code>seen:&lt;etapa&gt;:&lt;sid&gt;</code>) · <code>landing_view</code> = pageviews (KPI secundário, bots/refresh/retorno do Stripe excluídos) · <code>checkout_session_created</code> = sessão REAL criada na Stripe (não é clique) · <code>checkout_error</code> = falha na criação · <code>payment_completed</code> = webhook Stripe validado, idempotente por payment_intent · receita = soma dos pagamentos reais (BR R$ / US $, sem conversão) · tráfego de teste (<code>?mv_test=1</code>) não conta · <code>ev:</code>/<code>evt:</code> antigos continuam no KV, fora do funil.<br>
+    <b>Eventos vs. únicos:</b> <code>session_view</code>, <code>resume_uploaded</code>, <code>job_description_added</code>, <code>result_viewed</code>, <code>free_insight_viewed</code>, <code>locked_insights_viewed</code>, <code>unlock_clicked</code>, <code>full_report_viewed</code> são contados 1× por sessão de navegador (guard <code>seen:</code> + dedup client-side) — refresh não repete. <code>checkout_session_created</code> é 1 por análise (sessão Stripe reutilizada via guard <code>ck:&lt;token&gt;</code>) e <code>payment_completed</code> é 1 por venda (idempotente via <code>paid:&lt;token&gt;</code> + <code>pi:&lt;payment_intent&gt;</code> — webhook reentregue não conta 2×).
   </div>
 </div>
 <script src="/dashboard.js"></script>

@@ -8,6 +8,37 @@ const firedEvents = new Set();
 
 const $ = id => document.getElementById(id);
 
+// ── Identificadores anônimos (analytics v2) ─────────────────────
+// visitor_id: UUID persistente do navegador (localStorage) — 1 por visitante
+// anônimo. session_id: UUID da sessão da aba (sessionStorage) — 1 por sessão.
+// Nenhum dado pessoal: só números aleatórios. O servidor usa o sid para
+// contar CADA etapa do funil no máximo UMA VEZ por sessão (refreshes e
+// retries não multiplicam usuários).
+function uuid() {
+  try {
+    if (crypto.randomUUID) return crypto.randomUUID();
+  } catch { /* fallback abaixo */ }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+function getOrCreate(key, store) {
+  try {
+    let v = store.getItem(key);
+    if (!v) { v = uuid(); store.setItem(key, v); }
+    return v;
+  } catch { return uuid(); }
+}
+const VISITOR_ID = getOrCreate("mv-visitor", localStorage);
+const SESSION_ID = getOrCreate("mv-session-id", sessionStorage);
+// Tráfego de teste interno (?mv_test=1): sessão marcada → eventos/checkout
+// carregam test:true → o servidor NÃO conta no dashboard comercial.
+try {
+  if (new URLSearchParams(location.search).get("mv_test") === "1") sessionStorage.setItem("mv-test", "1");
+} catch { /* ignora */ }
+const IS_TEST = (() => { try { return sessionStorage.getItem("mv-test") === "1"; } catch { return false; } })();
+
 // ── UTM (atribuição de tráfego pago) ─────────────────────────────
 function readUtm() {
   try {
@@ -35,6 +66,8 @@ const MARKET = (window.MV_MARKET === "us" ? "us" : "br");
 const API_LANG = MARKET === "us" ? "en" : (window.MV_LANG || "pt");
 
 // ── Analytics (só contadores agregados — nunca conteúdo) ─────────
+// v2: envia sid + vid + test. O servidor conta cada etapa 1x por sessão
+// (guard seen:<stage>:<sid>) — refresh não vira 5 conversões.
 async function track(stage) {
   if (firedEvents.has(stage)) return;
   firedEvents.add(stage);
@@ -42,7 +75,7 @@ async function track(stage) {
     await fetch("/api/event", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ stage, market: MARKET, utm: UTM })
+      body: JSON.stringify({ stage, market: MARKET, utm: UTM, sid: SESSION_ID, vid: VISITOR_ID, test: IS_TEST })
     });
   } catch {
     // analytics nunca deve quebrar o fluxo
@@ -250,7 +283,7 @@ async function runAnalysis() {
     const response = await fetch("/api/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ cv: cvSend, job: jobSend, turnstile: turnstileToken, lang: API_LANG, market: MARKET, utm: UTM })
+      body: JSON.stringify({ cv: cvSend, job: jobSend, turnstile: turnstileToken, lang: API_LANG, market: MARKET, utm: UTM, sid: SESSION_ID, vid: VISITOR_ID, test: IS_TEST })
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || !data) {
@@ -502,7 +535,7 @@ $("pay").addEventListener("click", async () => {
     const response = await fetch("/api/checkout", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: resultToken, lang: API_LANG, market: MARKET })
+      body: JSON.stringify({ token: resultToken, lang: API_LANG, market: MARKET, sid: SESSION_ID, vid: VISITOR_ID, test: IS_TEST })
     });
     const data = await response.json().catch(() => null);
 
