@@ -21,8 +21,6 @@ info:
     name: MatchVaga
     url: https://matchvaga.kubezen.com
 servers:
-  - url: https://swagger.kubezen.com
-    description: "API console origin (same Worker as the API — Try it out works same-origin)"
   - url: https://matchvaga.kubezen.com
     description: Production (BR + US markets)
   - url: https://matchvaga.matchvaga.workers.dev

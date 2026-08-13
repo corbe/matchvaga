@@ -1850,15 +1850,15 @@ async function serveLegal(env: Env, url: URL, request: Request, assetPath: strin
 
 // ── Swagger/OpenAPI docs ─────────────────────────────────────────
 // Console de documentação em swagger.kubezen.com (custom domain binding no
-// MESMO worker — o console compartilha KV/DO/secrets com a API; try-it-out
-// same-origin funciona sem CORS) + backup em /docs no host da aplicação.
-// Página de desenvolvedor: Swagger UI self-hosted (public/vendor/swagger-ui)
-// + especificação em openapi.yaml (gerada a partir dos handlers reais).
+// MESMO worker) servindo a spec do ZEN MON API (public/docs/v1.json, cópia
+// verbatim de zen-mon/api/openapi/v1.json) + backup do spec do MatchVaga em
+// /docs no host da aplicação. Página de desenvolvedor: Swagger UI self-hosted
+// (public/vendor/swagger-ui) + especificação servida com no-store.
 // Rota EXPLÍCITA porque o fallback de assets aplicaria a CSP estrita do site
 // (style-src 'self') e o Swagger UI injeta estilos inline em runtime → a CSP
 // desta rota relaxa SÓ style-src e amplia connect-src p/ os hosts da API
-// (try-it-out cross-origin). No-store; não conta analytics; é estático, sem
-// rate limit. A página leva <meta name="robots" content="noindex">.
+// (try-it-out cross-origin). Não conta analytics; é estático, sem rate limit.
+// A página leva <meta name="robots" content="noindex">.
 const DOCS_HOST = "swagger.kubezen.com";
 
 async function serveDocs(env: Env, url: URL, request: Request, assetPath: string): Promise<Response> {
@@ -1912,17 +1912,18 @@ export default {
       });
     }
 
-    // swagger.kubezen.com = console de documentação da API (custom domain no
-    // MESMO worker: compartilha KV/DO/secrets — try-it-out same-origin). "/"
-    // serve a UI do Swagger e /openapi.yaml a spec; ANTES das rotas de landing
-    // (senão GET / contaria landing_view). Demais rotas do host (/api/*,
-    // /vendor/*, assets) seguem o fluxo normal do worker.
+    // swagger.kubezen.com = console de documentação (custom domain no MESMO
+    // worker). "/" serve a UI do Swagger e /v1.json a spec do Zen Mon API
+    // (cópia verbatim de zen-mon/api/openapi/v1.json — ver public/docs/README).
+    // ANTES das rotas de landing (senão GET / contaria landing_view). Demais
+    // rotas do host (/api/*, /vendor/*, assets) seguem o fluxo normal.
     if (request.method === "GET" && url.hostname === DOCS_HOST) {
       if (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/docs" || url.pathname === "/docs/") {
         return serveDocs(env, url, request, "docs/index.html");
       }
-      if (url.pathname === "/openapi.yaml" || url.pathname === "/docs/openapi.yaml") {
-        return serveDocs(env, url, request, "docs/openapi.yaml");
+      // Aliases servem o MESMO spec Zen Mon: /v1.json, /openapi.json, /openapi.yaml.
+      if (url.pathname === "/v1.json" || url.pathname === "/openapi.json" || url.pathname === "/openapi.yaml") {
+        return serveDocs(env, url, request, "docs/v1.json");
       }
     }
 

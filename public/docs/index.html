@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MatchVaga API — Swagger UI</title>
+  <title>API Console — Swagger UI</title>
   <meta name="robots" content="noindex">
   <link rel="icon" type="image/png" href="/vendor/swagger-ui/favicon-32x32.png">
   <link rel="stylesheet" href="/vendor/swagger-ui/swagger-ui.css">
@@ -15,9 +15,12 @@
   <script src="/vendor/swagger-ui/swagger-ui-standalone-preset.js"></script>
   <script>
     window.onload = function () {
-      // A mesma página serve em duas origens: swagger.kubezen.com (spec em
-      // /openapi.yaml) e /docs no host da aplicação (spec em /docs/openapi.yaml).
-      var specUrl = window.location.pathname.startsWith("/docs") ? "/docs/openapi.yaml" : "/openapi.yaml";
+      // Duas origens, dois specs: swagger.kubezen.com (console = Zen Mon API,
+      // spec em /v1.json) e /docs no host da aplicação (MatchVaga API, spec
+      // em /docs/openapi.yaml).
+      var isDocsPath = window.location.pathname.startsWith("/docs");
+      var specUrl = isDocsPath ? "/docs/openapi.yaml" : "/v1.json";
+      if (!isDocsPath) document.title = "Zen Mon API — Swagger UI";
       window.ui = SwaggerUIBundle({
         url: specUrl,
         dom_id: "#swagger-ui",
