@@ -14,6 +14,16 @@ binding = "RESULTS"
 id = "bb1377b1a2c144b4820fc738f8bf85b8"
 preview_id = "bb1377b1a2c144b4820fc738f8bf85b8"
 
+# Agregado de estatísticas (contadores atômicos p/ o dashboard — o /api/stats
+# lê 1 RPC ao DO em vez de ~270 reads + ~6 list() no KV por poll).
+[[durable_objects.bindings]]
+name = "STATS_DO"
+class_name = "MatchVagaStats"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MatchVagaStats"]
+
 [vars]
 OPENAI_MODEL = "deepseek-v4-flash"
 PRICE_BRL = "9,90"

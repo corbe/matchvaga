@@ -1,6 +1,7 @@
 interface Env {
   ASSETS: Fetcher;
   RESULTS: KVNamespace;
+  STATS_DO: DurableObjectNamespace; // agregado de estatísticas (atomic counters)
   OPENAI_API_KEY: string;
   OPENAI_MODEL?: string;
   PRICE_BRL?: string;
@@ -156,18 +157,36 @@ type FunnelStage = (typeof FUNNEL_STAGES)[number];
 // Contador de SESSÕES ÚNICAS por etapa: cada session_id conta no máximo UMA
 // VEZ por etapa (refreshes/retries não inflam — o guard `seen:` segura).
 // Refresh não transforma uma pessoa em cinco conversões.
-async function bumpUnique(env: Env, stage: FunnelStage, market: Market, sid: string) {
+// Tolerante a falha do KV (quota/indisponibilidade): NUNCA derruba o produto.
+// O guard `seen:` é a PORTARIA da unicidade: se ele não puder ser consultado,
+// o evento NÃO é contado (preserva dedup — sem risco de inflar com refresh).
+async function bumpUnique(env: Env, stage: FunnelStage, market: Market, sid: string, ctx?: ExecutionContext) {
   if (!sid || sid.length < 8 || sid.length > 80) return;
-  const seenKey = `seen:${stage}:${sid}`;
-  if (await env.RESULTS.get(seenKey)) return;
-  await env.RESULTS.put(seenKey, "1", { expirationTtl: 31 * 86400 });
   const day = new Date().toISOString().slice(0, 10);
-  const [d, t] = await Promise.all([
-    kvCount(env, `evu:${market}:${stage}:${day}`),
-    kvCount(env, `evut:${market}:${stage}`)
-  ]);
-  await env.RESULTS.put(`evu:${market}:${stage}:${day}`, String(d + 1), { expirationTtl: 86400 * 31 });
-  await env.RESULTS.put(`evut:${market}:${stage}`, String(t + 1));
+  const seenKey = `seen:${stage}:${sid}`;
+  try {
+    if (await env.RESULTS.get(seenKey)) return; // já contado nesta sessão
+    await env.RESULTS.put(seenKey, "1", { expirationTtl: 31 * 86400 });
+  } catch (err) {
+    // KV degradado: sem o guard não há como garantir unicidade → NÃO conta
+    // (nem no KV, nem no DO). Previne inflar o funil com refreshes durante
+    // uma indisponibilidade. O produto segue funcionando normalmente.
+    console.error(`[bumpUnique] KV falhou no seen (${stage}, ${market}):`, err);
+    return;
+  }
+  try {
+    const [d, t] = await Promise.all([
+      kvCount(env, `evu:${market}:${stage}:${day}`),
+      kvCount(env, `evut:${market}:${stage}`)
+    ]);
+    await env.RESULTS.put(`evu:${market}:${stage}:${day}`, String(d + 1), { expirationTtl: 86400 * 31 });
+    await env.RESULTS.put(`evut:${market}:${stage}`, String(t + 1));
+  } catch (err) {
+    // O contador bruto não gravou, mas o agregado do DO (dashboard) recebe
+    // o incremento abaixo — a medição continua, o KV recupera no backfill.
+    console.error(`[bumpUnique] KV falhou no contador (${stage}, ${market}):`, err);
+  }
+  statsFire(env, "/inc", { market, stage, kind: "u", day }, ctx);
 }
 
 // ── Bots/crawlers/link previews ──────────────────────────────────
@@ -213,28 +232,218 @@ function marketProductName(market: Market): string {
     : "MatchVaga — Kit para esta candidatura";
 }
 
-async function bump(env: Env, stage: FunnelStage, market: Market = "br") {
+async function bump(env: Env, stage: FunnelStage, market: Market = "br", ctx?: ExecutionContext) {
   const day = new Date().toISOString().slice(0, 10);
-  const dayKey = `ev:${market}:${stage}:${day}`;
-  const totalKey = `evt:${market}:${stage}`;
-  const [dayCount, totalCount] = await Promise.all([kvCount(env, dayKey), kvCount(env, totalKey)]);
-  await env.RESULTS.put(dayKey, String(dayCount + 1), { expirationTtl: 86400 * 31 });
-  await env.RESULTS.put(totalKey, String(totalCount + 1));
+  try {
+    const dayKey = `ev:${market}:${stage}:${day}`;
+    const totalKey = `evt:${market}:${stage}`;
+    const [dayCount, totalCount] = await Promise.all([kvCount(env, dayKey), kvCount(env, totalKey)]);
+    await env.RESULTS.put(dayKey, String(dayCount + 1), { expirationTtl: 86400 * 31 });
+    await env.RESULTS.put(totalKey, String(totalCount + 1));
+  } catch (err) {
+    // KV degradado: o produto (landing/preview/checkout) NUNCA pode cair por
+    // causa de contador de analytics. O agregado do DO recebe o incremento
+    // abaixo de qualquer forma — o dashboard continua medindo.
+    console.error(`[bump] KV falhou (${stage}, ${market}):`, err);
+  }
+  statsFire(env, "/inc", { market, stage, kind: "r", day }, ctx);
 }
 
 // Atribuição de tráfego (UTM) no SERVIDOR, a partir da URL do GET / — o único
 // lugar onde o utm_source da campanha chega (o cliente não envia landing_view
 // pelo /api/event; o código antigo fazia o ev:utm: só lá → fontes zeradas).
-async function bumpLandingUtm(env: Env, url: URL, market: Market) {
+async function bumpLandingUtm(env: Env, url: URL, market: Market, ctx?: ExecutionContext) {
   const utmSource = String(url.searchParams.get("utm_source") || url.searchParams.get("utm_medium") || "")
     .replace(/[^\w.-]/g, "").slice(0, 40);
   if (!utmSource) return;
   const day = new Date().toISOString().slice(0, 10);
-  const dayKey = `ev:utm:${market}:${utmSource}:${day}`;
-  const totalKey = `ev:utm:${market}:${utmSource}:total`;
-  const [d, t] = await Promise.all([kvCount(env, dayKey), kvCount(env, totalKey)]);
-  await env.RESULTS.put(dayKey, String(d + 1), { expirationTtl: 31 * 86400 });
-  await env.RESULTS.put(totalKey, String(t + 1));
+  try {
+    const dayKey = `ev:utm:${market}:${utmSource}:${day}`;
+    const totalKey = `ev:utm:${market}:${utmSource}:total`;
+    const [d, t] = await Promise.all([kvCount(env, dayKey), kvCount(env, totalKey)]);
+    await env.RESULTS.put(dayKey, String(d + 1), { expirationTtl: 31 * 86400 });
+    await env.RESULTS.put(totalKey, String(t + 1));
+  } catch (err) {
+    console.error(`[bumpLandingUtm] KV falhou (${market}, ${utmSource}):`, err);
+  }
+  statsFire(env, "/src", { market, source: utmSource, day }, ctx);
+}
+
+// ── Agregado de estatísticas (Durable Object) ────────────────────
+// O /api/stats lê um ÚNICO documento agregado por mercado (dia + total) em vez
+// de ~270 reads + ~6 list() no KV a cada poll. O DO é single-threaded por
+// instância → incrementos atômicos (sem lost updates do read-modify-write em
+// JSON agregado no KV, que sobrescreveria contadores sob concorrência).
+// Os contadores brutos do KV (evu:/evut:/ev:/evt:) continuam existindo como
+// fonte de verdade/backfill; o DO é a camada de leitura agregada do dashboard.
+// idFromName("global") = UMA instância para todos os mercados → contadores
+// globalmente consistentes (BR + US no mesmo documento, sem divisão).
+const STATS_DO_NAME = "global";
+type StatsDoc = { u: Record<string, number>; r: Record<string, number>; src: Record<string, { landings: number; paid: number }>; rev: { br: { amount: number; count: number }; us: { amount: number; count: number } } };
+
+function newStatsDoc(): StatsDoc {
+  return { u: {}, r: {}, src: {}, rev: { br: { amount: 0, count: 0 }, us: { amount: 0, count: 0 } } };
+}
+
+export class MatchVagaStats {
+  private state: DurableObjectState;
+  private mem = new Map<string, StatsDoc>();
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state;
+  }
+
+  private async load(key: string): Promise<StatsDoc> {
+    const hit = this.mem.get(key);
+    if (hit) return hit;
+    const raw = await this.state.storage.get<string>(key);
+    const doc: StatsDoc = raw ? (JSON.parse(raw) as StatsDoc) : newStatsDoc();
+    this.mem.set(key, doc);
+    return doc;
+  }
+
+  private async save(key: string, doc: StatsDoc) {
+    this.mem.set(key, doc);
+    await this.state.storage.put(key, JSON.stringify(doc));
+  }
+
+  // GET /stats?days=N → { br: {window,today,total,rawWindow,rawToday,rawTotal,sources,revenue}, us: {...} }
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const p = url.pathname;
+
+    if (request.method === "POST" && p === "/inc") {
+      const b: any = await request.json();
+      const day = String(b?.day || new Date().toISOString().slice(0, 10));
+      const market: Market = normMarket(b?.market);
+      const stage = String(b?.stage || "");
+      if (!stage) return new Response("bad request", { status: 400 });
+      const kind = b?.kind === "r" ? "r" : "u";
+      const [d, t] = await Promise.all([this.load(`day:${market}:${day}`), this.load(`total:${market}`)]);
+      d[kind][stage] = (d[kind][stage] || 0) + 1;
+      t[kind][stage] = (t[kind][stage] || 0) + 1;
+      await Promise.all([this.save(`day:${market}:${day}`, d), this.save(`total:${market}`, t)]);
+      return new Response("ok");
+    }
+
+    if (request.method === "POST" && p === "/rev") {
+      const b: any = await request.json();
+      const day = String(b?.day || new Date().toISOString().slice(0, 10));
+      const market: Market = normMarket(b?.market);
+      const amount = Number(b?.amount) || 0;
+      const [d, t] = await Promise.all([this.load(`day:${market}:${day}`), this.load(`total:${market}`)]);
+      d.rev[market].amount += amount;
+      d.rev[market].count += 1;
+      t.rev[market].amount += amount;
+      t.rev[market].count += 1;
+      await Promise.all([this.save(`day:${market}:${day}`, d), this.save(`total:${market}`, t)]);
+      return new Response("ok");
+    }
+
+    if (request.method === "POST" && p === "/src") {
+      const b: any = await request.json();
+      const day = String(b?.day || new Date().toISOString().slice(0, 10));
+      const market: Market = normMarket(b?.market);
+      const source = String(b?.source || "");
+      if (!source) return new Response("bad request", { status: 400 });
+      const paid = b?.paid === true;
+      const [d, t] = await Promise.all([this.load(`day:${market}:${day}`), this.load(`total:${market}`)]);
+      for (const doc of [d, t]) {
+        const e = doc.src[source] || { landings: 0, paid: 0 };
+        if (paid) e.paid += 1; else e.landings += 1;
+        doc.src[source] = e;
+      }
+      await Promise.all([this.save(`day:${market}:${day}`, d), this.save(`total:${market}`, t)]);
+      return new Response("ok");
+    }
+
+    if (request.method === "POST" && p === "/seed") {
+      const b: any = await request.json();
+      for (const [key, val] of Object.entries(b?.docs || {})) {
+        this.mem.set(key, val as StatsDoc);
+        await this.state.storage.put(key, JSON.stringify(val));
+      }
+      return new Response("ok");
+    }
+
+    if (request.method === "GET" && p === "/stats") {
+      const daysParam = Math.max(0, Math.min(365, Number(url.searchParams.get("days") || "1") || 0));
+      const day = new Date().toISOString().slice(0, 10);
+      const dates: string[] = [];
+      if (daysParam > 0) {
+        for (let i = 0; i < daysParam; i++) dates.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
+      }
+      const out: any = {};
+      for (const m of MARKETS) {
+        const todayDoc = await this.load(`day:${m}:${day}`);
+        const totalDoc = await this.load(`total:${m}`);
+        const windowDoc = newStatsDoc();
+        if (daysParam > 0) {
+          for (const d of dates) {
+            const doc = await this.load(`day:${m}:${d}`);
+            for (const k of Object.keys(doc.u)) windowDoc.u[k] = (windowDoc.u[k] || 0) + doc.u[k];
+            for (const k of Object.keys(doc.r)) windowDoc.r[k] = (windowDoc.r[k] || 0) + doc.r[k];
+            for (const [src, e] of Object.entries(doc.src)) {
+              const w = windowDoc.src[src] || { landings: 0, paid: 0 };
+              w.landings += e.landings; w.paid += e.paid;
+              windowDoc.src[src] = w;
+            }
+            windowDoc.rev[m].amount += doc.rev[m].amount;
+            windowDoc.rev[m].count += doc.rev[m].count;
+          }
+        } else {
+          for (const k of Object.keys(totalDoc.u)) windowDoc.u[k] = totalDoc.u[k];
+          for (const k of Object.keys(totalDoc.r)) windowDoc.r[k] = totalDoc.r[k];
+          for (const [src, e] of Object.entries(totalDoc.src)) windowDoc.src[src] = { ...e };
+          windowDoc.rev[m] = { ...totalDoc.rev[m] };
+        }
+        const sources = Object.entries(windowDoc.src)
+          .map(([source, e]) => ({ source, landings: e.landings, paid: e.paid }))
+          .sort((a, b) => b.landings - a.landings)
+          .slice(0, 20);
+        // Preenche TODAS as etapas do funil (com 0) — o dashboard/buildConv
+        // esperam o shape completo; sem isso, etapas sem evento viravam
+        // undefined → conv "NaN%" na comparação por mercado.
+        const fill = (map: Record<string, number>): Record<string, number> => {
+          const o: Record<string, number> = {};
+          for (const s of FUNNEL_STAGES) o[s] = map[s] || 0;
+          return o;
+        };
+        out[m] = {
+          window: fill(windowDoc.u),
+          today: fill(todayDoc.u),
+          total: fill(totalDoc.u),
+          rawWindow: fill(windowDoc.r),
+          rawToday: fill(todayDoc.r),
+          rawTotal: fill(totalDoc.r),
+          sources,
+          revenue: windowDoc.rev[m]
+        };
+      }
+      return new Response(JSON.stringify(out), { headers: { "content-type": "application/json" } });
+    }
+
+    return new Response("not found", { status: 404 });
+  }
+}
+
+// Fire-and-forget para o DO agregado: NUNCA bloqueia o caminho do produto.
+// Falhas são logadas e os contadores brutos do KV (fonte de verdade) seguem
+// intactos — o dashboard pode cair sem derrubar preview/checkout/pagamento.
+function statsFire(env: Env, path: string, body: unknown, ctx?: ExecutionContext) {
+  const p = (async () => {
+    try {
+      const stub = env.STATS_DO.get(env.STATS_DO.idFromName(STATS_DO_NAME));
+      await stub.fetch("https://stats.local" + path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch (err) {
+      console.error("[stats-do] falha no espelho (produto não afetado):", err);
+    }
+  })();
+  if (ctx) ctx.waitUntil(p); else void p;
 }
 
 // Tentativa ÚNICA com timeout generoso: duas tentativas de 14s ultrapassam o
@@ -607,7 +816,7 @@ function priceToCents(price: string): number {
 
 const RESULT_TTL = 86400; // análise fica disponível 24h (tempo para pagar)
 
-async function handleCheckout(request: Request, env: Env) {
+async function handleCheckout(request: Request, env: Env, ctx?: ExecutionContext) {
   if (!env.STRIPE_SECRET_KEY) {
     return json({ error: "Pagamento indisponível no momento. Tente novamente em instantes." }, 503);
   }
@@ -704,8 +913,8 @@ async function handleCheckout(request: Request, env: Env) {
     else if (res.status === 400 || res.status === 404) errType = "stripe_invalid_" + (data?.error?.code || res.status);
     console.error("Stripe error", res.status, JSON.stringify(data));
     if (!isTest) {
-      await bump(env, "checkout_error", market);
-      await bumpUnique(env, "checkout_error", market, sid || token);
+      await bump(env, "checkout_error", market, ctx);
+      await bumpUnique(env, "checkout_error", market, sid || token, ctx);
       await env.RESULTS.put(`ce:${token}`, errType, { expirationTtl: RESULT_TTL });
     }
     return json({ error: smsg(lang, "payment_failed") }, 502);
@@ -720,8 +929,8 @@ async function handleCheckout(request: Request, env: Env) {
   if (!isTest) {
     // checkout_session_created = sessão REAL devolvida pela API da Stripe.
     // Conta UMA vez por sessão de navegador (bumpUnique) + total bruto.
-    await bump(env, "checkout_session_created", market);
-    await bumpUnique(env, "checkout_session_created", market, sid || token);
+    await bump(env, "checkout_session_created", market, ctx);
+    await bumpUnique(env, "checkout_session_created", market, sid || token, ctx);
   }
   return json({ url: data.url });
 }
@@ -765,7 +974,7 @@ async function verifyStripeSignature(
   return { ok: true, payload: JSON.parse(rawBody) };
 }
 
-async function handleStripeWebhook(request: Request, env: Env) {
+async function handleStripeWebhook(request: Request, env: Env, ctx?: ExecutionContext) {
   const raw = await request.text();
   const { ok, payload } = await verifyStripeSignature(env, raw, request.headers.get("stripe-signature"));
   if (!ok) return json({ error: "Assinatura inválida." }, 401);
@@ -816,18 +1025,22 @@ async function handleStripeWebhook(request: Request, env: Env) {
         );
         // Guarda o PI idempotente DEPOIS de gravar (a venda conta 1x).
         await env.RESULTS.put(piKey, token, { expirationTtl: 90 * 86400 });
+        // Espelha receita + fonte paga no agregado (fire-and-forget; o DO é
+        // single-threaded → o incremento é atômico, sem lost updates).
+        statsFire(env, "/rev", { market, amount: amountTotal, day: new Date().toISOString().slice(0, 10) });
         const utmSrc = await env.RESULTS.get(`utm:${token}`);
         if (utmSrc) {
           const uday = new Date().toISOString().slice(0, 10);
           await env.RESULTS.put(`ev:utm-paid:${market}:${utmSrc}:${uday}`, String((await kvCount(env, `ev:utm-paid:${market}:${utmSrc}:${uday}`)) + 1), { expirationTtl: 31 * 86400 });
           await env.RESULTS.put(`ev:utm-paid:${market}:${utmSrc}:total`, String((await kvCount(env, `ev:utm-paid:${market}:${utmSrc}:total`)) + 1));
+          statsFire(env, "/src", { market, source: utmSrc, paid: true, day: uday });
         }
         console.log(`[stripe] pagamento confirmado para token ${token.slice(0, 8)}… (${market}, ${currency} ${amountTotal})`);
-        await bump(env, "payment_completed", market);
+        await bump(env, "payment_completed", market, ctx);
         // payment_completed no funil de sessões únicas: recupera o sid da
         // análise (guardado no /api/preview) e conta 1x por sessão.
         const analysisSid = await env.RESULTS.get(`sid:${token}`);
-        await bumpUnique(env, "payment_completed", market, analysisSid || token);
+        await bumpUnique(env, "payment_completed", market, analysisSid || token, ctx);
       } else {
         // Já desbloqueado (paid: presente) mas PI novo: ainda grava o PI
         // idempotente para o caso de um webhook duplicado chegar depois.
@@ -873,7 +1086,7 @@ async function checkBudgetAndAlert(env: Env) {
 }
 
 // ── Handlers de API ──────────────────────────────────────────────
-async function handlePreview(request: Request, env: Env) {
+async function handlePreview(request: Request, env: Env, ctx?: ExecutionContext) {
   if (!env.OPENAI_API_KEY) {
     return json({ error: "Não conseguimos analisar seu currículo agora. Tente novamente em instantes." }, 500);
   }
@@ -938,8 +1151,8 @@ async function handlePreview(request: Request, env: Env) {
     // pedidos rejeitados (429, texto inválido) NÃO contam como análise
     // iniciada — o funil mede inícios REAIS.
     if (!isTest) {
-      await bump(env, "analysis_started", market);
-      await bumpUnique(env, "analysis_started", market, sid);
+      await bump(env, "analysis_started", market, ctx);
+      await bumpUnique(env, "analysis_started", market, sid, ctx);
     }
 
     // 3) Cache por hash: análises idênticas repetidas não gastam créditos de novo.
@@ -981,8 +1194,8 @@ async function handlePreview(request: Request, env: Env) {
     }
 
     if (!isTest) {
-      await bump(env, "analysis_completed", market);
-      await bumpUnique(env, "analysis_completed", market, sid);
+      await bump(env, "analysis_completed", market, ctx);
+      await bumpUnique(env, "analysis_completed", market, sid, ctx);
     }
 
     // GRÁTIS = descoberta: score, resumo curto, 3 pontos fortes, contagem e
@@ -1070,7 +1283,7 @@ async function handleUnlock(request: Request, env: Env) {
 // Eventos de funil vindos do cliente (sem dados pessoais — só contadores).
 // v2: cada etapa conta no máximo UMA VEZ por sessão de navegador (sid), o
 // cliente manda o sid que ele mesmo gerou; refreshes não multiplicam usuários.
-async function handleEvent(request: Request, env: Env) {
+async function handleEvent(request: Request, env: Env, ctx?: ExecutionContext) {
   let body: any;
   try {
     body = await request.json();
@@ -1089,8 +1302,8 @@ async function handleEvent(request: Request, env: Env) {
     return json({ ok: true }); // silencioso sob rate limit
   }
   if (!isTest) {
-    await bump(env, stage as FunnelStage, market);
-    await bumpUnique(env, stage as FunnelStage, market, sid);
+    await bump(env, stage as FunnelStage, market, ctx);
+    await bumpUnique(env, stage as FunnelStage, market, sid, ctx);
   }
   // Atribuição de tráfego (UTM) — só contadores por fonte, nunca conteúdo.
   // Corrigido 12/08: o antigo só contava quando stage === "landing_view", mas
@@ -1151,95 +1364,11 @@ function buildConv(t: Record<string, number>): Record<string, string> {
   return conv;
 }
 
-// Lê os contadores de UM mercado. BR inclui as chaves LEGADAS sem prefixo
-// (pré-mercado, 11/08) para não perder o histórico.
-// v2: o funil lê as chaves de SESSÕES ÚNICAS (evu:/evut:); as chaves brutas
-// (ev:/evt:) continuam disponíveis como eventos/pageviews (KPI secundário).
-async function readMarketStats(env: Env, m: Market, day: string, dates: string[], daysParam: number) {
-  const today: Record<string, number> = {};
-  const total: Record<string, number> = {};
-  const window: Record<string, number> = {};
-  const rawWindow: Record<string, number> = {};
-  const isBr = m === "br";
-  for (const stage of FUNNEL_STAGES) {
-    // Únicos (funil)
-    today[stage] = await kvCount(env, `evu:${m}:${stage}:${day}`);
-    total[stage] = await kvCount(env, `evut:${m}:${stage}`);
-    let sum = 0;
-    for (const d of dates) sum += await kvCount(env, `evu:${m}:${stage}:${d}`);
-    if (isBr) {
-      today[stage] += await kvCount(env, `evu:${stage}:${day}`);
-      total[stage] += await kvCount(env, `evut:${stage}`);
-      for (const d of dates) sum += await kvCount(env, `evu:${stage}:${d}`);
-    }
-    window[stage] = daysParam > 0 ? sum : total[stage];
-    // Brutos (eventos/pageviews — KPI secundário)
-    let rawSum = 0;
-    for (const d of dates) rawSum += await kvCount(env, `ev:${m}:${stage}:${d}`);
-    if (isBr) for (const d of dates) rawSum += await kvCount(env, `ev:${stage}:${d}`);
-    rawWindow[stage] = daysParam > 0 ? rawSum : await kvCount(env, `evt:${m}:${stage}`) + (isBr ? await kvCount(env, `evt:${stage}`) : 0);
-  }
-  return { window, today, total, rawWindow, conv: buildConv(window) };
-}
-
-// Receita = soma dos PAGAMENTOS REAIS confirmados (registro pay:<token> com
-// amount/currency/market), nunca count × preço. Filtra pelo período.
-async function readRevenue(env: Env, dates: string[], daysParam: number, market: Market | "all") {
-  const rev = { br: { amount: 0, count: 0 }, us: { amount: 0, count: 0 } };
-  const keys = await env.RESULTS.list({ prefix: "pay:" });
-  const since = daysParam > 0 ? Date.now() - daysParam * 86400000 : 0;
-  for (const k of keys.keys) {
-    const raw = await env.RESULTS.get(k.name);
-    if (!raw) continue;
-    try {
-      const rec = JSON.parse(raw);
-      if (daysParam > 0 && !(rec.ts >= since)) continue;
-      const m: Market = normMarket(rec.market);
-      if (market !== "all" && m !== market) continue;
-      rev[m].amount += Number(rec.amount) || 0;
-      rev[m].count += 1;
-    } catch {
-      // registro inválido — ignora
-    }
-  }
-  return rev;
-}
-
-// Fontes de tráfego (UTM) por mercado; "all" soma BR + US (+ legado em BR).
-async function readSources(env: Env, dates: string[], daysParam: number, market: Market | "all") {
-  const srcMap = new Map<string, { landings: number; paid: number }>();
-  const mkPrefixes = (base: string): string[] =>
-    market === "all" ? [`${base}br:`, `${base}us:`, base]
-    : market === "us" ? [`${base}us:`]
-    : [`${base}br:`, base];
-  const addKeys = async (prefixes: string[], paid: boolean) => {
-    for (const prefix of prefixes) {
-      const keys = await env.RESULTS.list({ prefix });
-      for (const k of keys.keys) {
-        const parts = k.name.split(":");
-        // ev:utm:<mkt>:<src>:<day|total>  |  legado ev:utm:<src>:<day|total>
-        const hasMkt = parts[2] === "br" || parts[2] === "us";
-        const src = hasMkt ? parts[3] : parts[2];
-        const dayPart = hasMkt ? parts[4] : parts[3];
-        if (!src || !dayPart) continue;
-        if (dayPart === "total") {
-          if (daysParam > 0) continue;
-        } else if (daysParam > 0 && !dates.includes(dayPart)) {
-          continue;
-        }
-        const e = srcMap.get(src) || { landings: 0, paid: 0 };
-        e[paid ? "paid" : "landings"] += Number(await env.RESULTS.get(k.name)) || 0;
-        srcMap.set(src, e);
-      }
-    }
-  };
-  await addKeys(mkPrefixes("ev:utm:"), false);
-  await addKeys(mkPrefixes("ev:utm-paid:"), true);
-  const sources = Array.from(srcMap.entries()).map(([source, e]) => ({ source, landings: e.landings, paid: e.paid }));
-  sources.sort((a, b) => b.landings - a.landings);
-  return sources.slice(0, 20);
-}
-
+// ── Leitura do agregado (Durable Object) ─────────────────────────
+// O dashboard lê UM RPC ao DO (0 reads / 0 list() no KV). O DO mantém
+// documentos diários + totais por mercado com incrementos ATÔMICOS
+// (single-threaded por instância) — sem lost updates de RMW em JSON no KV.
+// Os contadores brutos do KV continuam como fonte de verdade/backfill.
 async function handleStats(env: Env, url: URL) {
   // Proteção interna: se STATS_KEY estiver definida, exige ?key=<chave>.
   if (env.STATS_KEY && url.searchParams.get("key") !== env.STATS_KEY) {
@@ -1249,19 +1378,44 @@ async function handleStats(env: Env, url: URL) {
   // Período: 1=hoje, 7, 30, 0=todo período (totais). Usa as chaves diárias.
   const daysParam = Math.max(0, Math.min(365, Number(url.searchParams.get("days") || "1") || 0));
   const day = new Date().toISOString().slice(0, 10);
-  const dates: string[] = [];
-  if (daysParam > 0) {
-    for (let i = 0; i < daysParam; i++) {
-      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
-      dates.push(d);
-    }
-  }
 
   // Mercado selecionado: br | us | all (padrão: all = soma BR + US).
   const marketParam = String(url.searchParams.get("market") || "all").toLowerCase();
   const selected: Market | "all" = marketParam === "us" ? "us" : marketParam === "br" ? "br" : "all";
 
-  const [br, us] = await Promise.all([readMarketStats(env, "br", day, dates, daysParam), readMarketStats(env, "us", day, dates, daysParam)]);
+  // Medição de consumo (spec §12): conta TODAS as operações no KV feitas
+  // durante este request. O handler novo NÃO toca o KV (só 1 RPC ao DO) —
+  // o header x-kv-ops deve ser 0; se um dia voltar a crescer, é regressão.
+  let kvOps = 0;
+  const countedResults = new Proxy(env.RESULTS, {
+    get(target, prop, receiver) {
+      const v = Reflect.get(target, prop, receiver);
+      if (typeof v === "function" && ["get", "list", "put", "delete"].includes(String(prop))) {
+        return (...args: unknown[]) => {
+          kvOps++;
+          return (v as Function).apply(target, args);
+        };
+      }
+      return v;
+    }
+  });
+  // (countedResults não é usado propositalmente — o stats só lê o DO.
+  //  O Proxy serve de instrumentação permanente do custo do endpoint.)
+
+  // Único acesso: 1 RPC ao DO. Se o DO estiver indisponível, o dashboard
+  // falha sozinho (503) — o produto nunca passa por aqui.
+  let agg: any;
+  try {
+    const stub = env.STATS_DO.get(env.STATS_DO.idFromName(STATS_DO_NAME));
+    const res = await stub.fetch(`https://stats.local/stats?days=${daysParam}`);
+    if (!res.ok) throw new Error(`stats-do ${res.status}`);
+    agg = await res.json();
+  } catch (err) {
+    console.error("[stats] DO indisponível:", err);
+    return json({ error: "Dashboard indisponível. Tente novamente em instantes." }, 503);
+  }
+  const br = agg.br || { window: {}, today: {}, total: {}, rawWindow: {}, sources: [], revenue: { amount: 0, count: 0 } };
+  const us = agg.us || { window: {}, today: {}, total: {}, rawWindow: {}, sources: [], revenue: { amount: 0, count: 0 } };
   const merge = (a: Record<string, number>, b: Record<string, number>): Record<string, number> => {
     const o: Record<string, number> = {};
     for (const stage of FUNNEL_STAGES) o[stage] = (a[stage] || 0) + (b[stage] || 0);
@@ -1282,9 +1436,30 @@ async function handleStats(env: Env, url: URL) {
     payment_completed: window.payment_completed || 0
   };
 
-  const revenue = await readRevenue(env, dates, daysParam, selected);
+  // Receita real por mercado (vem do agregado — soma dos pay: reais).
+  const revenue = selected === "all" ? { br: br.revenue, us: us.revenue }
+    : selected === "us" ? { us: us.revenue }
+    : { br: br.revenue };
 
-  return json({
+  // Fontes (UTM) por mercado; "all" funde BR + US.
+  const mergeSources = (a: any[], b: any[]) => {
+    const map = new Map<string, { landings: number; paid: number }>();
+    for (const s of [...a, ...b]) {
+      const e = map.get(s.source) || { landings: 0, paid: 0 };
+      e.landings += s.landings || 0;
+      e.paid += s.paid || 0;
+      map.set(s.source, e);
+    }
+    return Array.from(map.entries())
+      .map(([source, e]) => ({ source, landings: e.landings, paid: e.paid }))
+      .sort((x, y) => y.landings - x.landings)
+      .slice(0, 20);
+  };
+  const sources = selected === "all" ? mergeSources(br.sources, us.sources)
+    : selected === "us" ? us.sources
+    : br.sources;
+
+  const jsonRes = {
     day,
     days: daysParam,
     market: selected,
@@ -1292,7 +1467,7 @@ async function handleStats(env: Env, url: URL) {
     // checkout_session_created + receita real). Antes disso, os dados misturam
     // pageviews com eventos e não devem basear decisão comercial.
     reliable_since: env.RELIABLE_SINCE || "",
-    sources: await readSources(env, dates, daysParam, selected),
+    sources,
     window,
     today,
     total,
@@ -1304,9 +1479,160 @@ async function handleStats(env: Env, url: URL) {
     convTotal: buildConv(total),
     // Comparação BR vs US (sempre presente — o dashboard usa p/ o experimento).
     markets: {
-      br: { window: br.window, total: br.total, conv: br.conv },
-      us: { window: us.window, total: us.total, conv: us.conv }
+      br: { window: br.window, total: br.total, conv: buildConv(br.window) },
+      us: { window: us.window, total: us.total, conv: buildConv(us.window) }
     }
+  };
+
+  // Cache curto (60s) e PRIVADO: nunca em cache compartilhado/CDN (o payload
+  // contém métricas administrativas; o cache fica só no navegador do dono).
+  return new Response(JSON.stringify(jsonRes), {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, max-age=60",
+      "x-content-type-options": "nosniff",
+      // Instrumentação de consumo: operações KV executadas neste request.
+      "x-kv-ops": String(kvOps)
+    }
+  });
+}
+
+// Backfill ÚNICO e controlado: varre o KV uma vez (excepcional — permitido
+// pelo spec), constrói os documentos agregados a partir dos contadores
+// existentes e popula o DO. Depois disso, /api/stats nunca mais escaneia.
+// Protegido por STATS_KEY (mesmo segredo do dashboard).
+async function handleStatsBackfill(env: Env, url: URL) {
+  if (env.STATS_KEY && url.searchParams.get("key") !== env.STATS_KEY) {
+    return json({ error: "Acesso negado." }, 403);
+  }
+  const docs: Record<string, StatsDoc> = {};
+  const getDoc = (m: Market, date: string) => {
+    const key = `${m}:${date}`;
+    if (!docs[key]) docs[key] = newStatsDoc();
+    return docs[key];
+  };
+  // Totais por mercado (chave "total" no mapa de docs, prefixo t: no DO).
+  const totals: Record<Market, StatsDoc> = { br: newStatsDoc(), us: newStatsDoc() };
+
+  let cursor: string | undefined;
+  const walk = async (prefix: string, fn: (name: string) => void) => {
+    cursor = undefined;
+    do {
+      const page: any = await env.RESULTS.list({ prefix, cursor });
+      for (const k of page.keys) fn(k.name);
+      cursor = page.cursor;
+    } while (cursor);
+  };
+
+  // Chaves diárias: evu:<mkt>:<etapa>:<dia> (únicos) e ev:<mkt>:<etapa>:<dia>
+  // (brutos), com suporte ao legado sem prefixo de mercado (tratado como BR).
+  const dailyKeys: { name: string; m: Market; stage: string; d: string; kind: "u" | "r" }[] = [];
+  const collectDaily = (name: string, kind: "u" | "r") => {
+    const p = name.split(":");
+    const hasMkt = p[1] === "br" || p[1] === "us";
+    const m: Market = hasMkt ? (p[1] as Market) : "br";
+    const stage = hasMkt ? p[2] : p[1];
+    const d = hasMkt ? p[3] : p[2];
+    if (!stage || !d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    dailyKeys.push({ name, m, stage, d, kind });
+  };
+  await walk("evu:", (n) => collectDaily(n, "u"));
+  await walk("ev:", (n) => {
+    if (n.startsWith("ev:utm")) return; // UTM tratado à parte
+    collectDaily(n, "r");
+  });
+  for (const k of dailyKeys) {
+    const doc = getDoc(k.m, k.d);
+    const v = parseNum(await env.RESULTS.get(k.name));
+    doc[k.kind][k.stage] = (doc[k.kind][k.stage] || 0) + v;
+  }
+
+  // Totais: evut:<mkt>:<etapa> (únicos) e evt:<mkt>:<etapa> (brutos).
+  const totalKeys: { name: string; m: Market; stage: string; kind: "u" | "r" }[] = [];
+  const collectTotal = (name: string, kind: "u" | "r") => {
+    const p = name.split(":");
+    const hasMkt = p[1] === "br" || p[1] === "us";
+    const m: Market = hasMkt ? (p[1] as Market) : "br";
+    const stage = hasMkt ? p[2] : p[1];
+    if (!stage || stage === "total") return;
+    totalKeys.push({ name, m, stage, kind });
+  };
+  await walk("evut:", (n) => collectTotal(n, "u"));
+  await walk("evt:", (n) => collectTotal(n, "r"));
+  for (const k of totalKeys) {
+    const v = parseNum(await env.RESULTS.get(k.name));
+    totals[k.m][k.kind][k.stage] = (totals[k.m][k.kind][k.stage] || 0) + v;
+  }
+
+  // Fontes UTM: ev:utm:<mkt>:<src>:<dia> e ev:utm-paid:<mkt>:<src>:<dia>
+  const utmKeys: { name: string; m: Market; src: string; d: string; paid: boolean }[] = [];
+  const collectUtm = (name: string, paid: boolean) => {
+    const p = name.split(":");
+    // ev:utm:<mkt>:<src>:<day> | legado ev:utm:<src>:<day>
+    const hasMkt = p[2] === "br" || p[2] === "us";
+    const m: Market = hasMkt ? (p[2] as Market) : "br";
+    const src = hasMkt ? p[3] : p[2];
+    const d = hasMkt ? p[4] : p[3];
+    if (!src || !d || d === "total" || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    utmKeys.push({ name, m, src, d, paid });
+  };
+  await walk("ev:utm:", (n) => collectUtm(n, false));
+  await walk("ev:utm-paid:", (n) => collectUtm(n, true));
+  for (const k of utmKeys) {
+    const doc = getDoc(k.m, k.d);
+    const v = parseNum(await env.RESULTS.get(k.name));
+    const e = doc.src[k.src] || { landings: 0, paid: 0 };
+    if (k.paid) e.paid += v; else e.landings += v;
+    doc.src[k.src] = e;
+  }
+
+  // Receita: soma dos pay:<token> reais (por dia do ts).
+  const payKeys: string[] = [];
+  await walk("pay:", (n) => payKeys.push(n));
+  for (const name of payKeys) {
+    const raw = await env.RESULTS.get(name);
+    if (!raw) continue;
+    try {
+      const rec = JSON.parse(raw);
+      const m: Market = normMarket(rec.market);
+      const d = new Date(rec.ts || Date.now()).toISOString().slice(0, 10);
+      const doc = getDoc(m, d);
+      doc.rev[m].amount += Number(rec.amount) || 0;
+      doc.rev[m].count += 1;
+      totals[m].rev[m].amount += Number(rec.amount) || 0;
+      totals[m].rev[m].count += 1;
+    } catch {
+      // registro inválido — ignora
+    }
+  }
+
+  // Envia tudo para o DO (docs diários + totais).
+  const seedDocs: Record<string, StatsDoc> = {};
+  for (const [key, doc] of Object.entries(docs)) {
+    const [m, d] = key.split(":");
+    seedDocs[`day:${m}:${d}`] = doc;
+  }
+  seedDocs["total:br"] = totals.br;
+  seedDocs["total:us"] = totals.us;
+  try {
+    const stub = env.STATS_DO.get(env.STATS_DO.idFromName(STATS_DO_NAME));
+    await stub.fetch("https://stats.local/seed", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ docs: seedDocs })
+    });
+  } catch (err) {
+    console.error("[stats] backfill falhou:", err);
+    return json({ error: "Backfill falhou." }, 502);
+  }
+
+  return json({
+    ok: true,
+    days_seeded: Object.keys(docs).length,
+    totals: { br: totals.br.u, us: totals.us.u },
+    sources: utmKeys.length,
+    revenue: { br: totals.br.rev.br, us: totals.us.rev.us }
   });
 }
 
@@ -1377,7 +1703,7 @@ async function serveLanding(env: Env, url: URL, request: Request, market: Market
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     // HTTPS obrigatório: redireciona http → https (algumas zonas Cloudflare
@@ -1388,7 +1714,7 @@ export default {
     }
 
     if (request.method === "POST" && url.pathname === "/api/preview") {
-      return handlePreview(request, env);
+      return handlePreview(request, env, ctx);
     }
 
     if (request.method === "POST" && url.pathname === "/api/unlock") {
@@ -1396,15 +1722,15 @@ export default {
     }
 
     if (request.method === "POST" && url.pathname === "/api/checkout") {
-      return handleCheckout(request, env);
+      return handleCheckout(request, env, ctx);
     }
 
     if (request.method === "POST" && url.pathname === "/api/stripe-webhook") {
-      return handleStripeWebhook(request, env);
+      return handleStripeWebhook(request, env, ctx);
     }
 
     if (request.method === "POST" && url.pathname === "/api/event") {
-      return handleEvent(request, env);
+      return handleEvent(request, env, ctx);
     }
 
     if (request.method === "GET" && url.pathname === "/api/status") {
@@ -1413,6 +1739,11 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/stats") {
       return handleStats(env, url);
+    }
+
+    // Backfill ÚNICO e controlado (varre o KV uma vez e popula o DO agregado).
+    if (request.method === "POST" && url.pathname === "/api/stats/backfill") {
+      return handleStatsBackfill(env, url);
     }
 
     // Dashboard do funil — rota interna protegida (não conta como landing_view).
@@ -1449,8 +1780,8 @@ export default {
     // retorno do Stripe (?checkout=success|cancel) NÃO é uma visita nova.
     if (request.method === "GET" && url.pathname === "/us") {
       if (!isBotRequest(request) && !url.searchParams.has("checkout") && url.searchParams.get("mv_test") !== "1") {
-        await bump(env, "landing_view", "us");
-        await bumpLandingUtm(env, url, "us");
+        await bump(env, "landing_view", "us", ctx);
+        await bumpLandingUtm(env, url, "us", ctx);
       }
       return serveLanding(env, url, request, "us");
     }
@@ -1461,8 +1792,8 @@ export default {
       // landing_view é KPI secundário = pageviews válidos. ?mv_test=1 (testes
       // internos) também fica fora das métricas comerciais.
       if (!isBotRequest(request) && !url.searchParams.has("checkout") && url.searchParams.get("mv_test") !== "1") {
-        await bump(env, "landing_view", "br");
-        await bumpLandingUtm(env, url, "br");
+        await bump(env, "landing_view", "br", ctx);
+        await bumpLandingUtm(env, url, "br", ctx);
       }
     }
 

@@ -114,9 +114,16 @@ function renderRevenue(rev) {
   el.innerHTML = parts.length ? parts.join(" + ") : "–";
 }
 
+let loading = false;
+let reloadQueued = false;
 async function load() {
+  // Nunca dispara 2 requests simultâneos (proteção contra múltiplas chamadas
+  // do polling + troca de período/mercado ao mesmo tempo). Se um load estiver
+  // em andamento quando o usuário trocar período/mercado, agenda outro depois.
+  if (loading) { reloadQueued = true; return; }
+  loading = true;
   try {
-    const res = await fetch("/api/stats?days=" + DAYS + "&market=" + MARKET + (KEY ? "&key=" + encodeURIComponent(KEY) : ""), { headers: { "cache-control": "no-cache" } });
+    const res = await fetch("/api/stats?days=" + DAYS + "&market=" + MARKET + (KEY ? "&key=" + encodeURIComponent(KEY) : ""));
     if (res.status === 403) { document.getElementById("updated").textContent = window.t ? window.t("dash.denied") : "Acesso negado"; return; }
     const d = await res.json();
     const w = d.window || {};
@@ -201,6 +208,9 @@ async function load() {
     });
   } catch (e) {
     document.getElementById("updated").textContent = window.t ? window.t("dash.failed", { msg: e.message }) : ("falha: " + e.message);
+  } finally {
+    loading = false;
+    if (reloadQueued) { reloadQueued = false; load(); }
   }
 }
 
@@ -233,4 +243,6 @@ if (window.initLangSelector) {
   window.onLangChanged = function () { applyI18n(); load(); };
 }
 load();
-setInterval(load, 30000);
+// Polling de 5 minutos (não-realtime): o dashboard é administrativo e o
+// /api/stats agora lê 1 RPC ao agregado — sem necessidade de 30s.
+setInterval(load, 300000);
