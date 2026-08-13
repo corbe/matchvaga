@@ -1448,7 +1448,7 @@ export default {
     // só navegação HUMANA real: bots/crawlers/link previews são ignorados e o
     // retorno do Stripe (?checkout=success|cancel) NÃO é uma visita nova.
     if (request.method === "GET" && url.pathname === "/us") {
-      if (!isBotRequest(request) && !url.searchParams.has("checkout")) {
+      if (!isBotRequest(request) && !url.searchParams.has("checkout") && url.searchParams.get("mv_test") !== "1") {
         await bump(env, "landing_view", "us");
         await bumpLandingUtm(env, url, "us");
       }
@@ -1458,8 +1458,9 @@ export default {
     if (request.method === "GET" && url.pathname === "/") {
       // landing_view v2: NÃO conta refresh/bots/retorno do Stripe. O funil
       // principal começa em session_view (sessões únicas, client-side);
-      // landing_view é KPI secundário = pageviews válidos.
-      if (!isBotRequest(request) && !url.searchParams.has("checkout")) {
+      // landing_view é KPI secundário = pageviews válidos. ?mv_test=1 (testes
+      // internos) também fica fora das métricas comerciais.
+      if (!isBotRequest(request) && !url.searchParams.has("checkout") && url.searchParams.get("mv_test") !== "1") {
         await bump(env, "landing_view", "br");
         await bumpLandingUtm(env, url, "br");
       }
