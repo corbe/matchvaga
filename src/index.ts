@@ -1841,6 +1841,35 @@ async function serveLegal(env: Env, url: URL, request: Request, assetPath: strin
   return new Response(asset.body, { status: asset.status, headers });
 }
 
+// ── Swagger/OpenAPI docs (/docs) ─────────────────────────────────
+// Página de desenvolvedor: Swagger UI self-hosted (public/vendor/swagger-ui)
+// + especificação em /docs/openapi.yaml (gerada a partir dos handlers reais).
+// Rota EXPLÍCITA porque o fallback de assets aplicaria a CSP estrita do site
+// (style-src 'self') e o Swagger UI injeta estilos inline em runtime → a CSP
+// desta rota relaxa SÓ style-src; o resto dos security headers permanece.
+// No-store (spec muda a cada deploy); não conta analytics; é estático, sem
+// rate limit. A página leva <meta name="robots" content="noindex">.
+async function serveDocs(env: Env, url: URL, request: Request, assetPath: string): Promise<Response> {
+  let asset = await env.ASSETS.fetch(new Request(new URL(`/${assetPath}`, url), request), { redirect: "manual" });
+  let hops = 0;
+  while ((asset.status === 301 || asset.status === 302 || asset.status === 307 || asset.status === 308) && hops < 4) {
+    const loc = asset.headers.get("location");
+    if (!loc) break;
+    asset = await env.ASSETS.fetch(new Request(new URL(loc, url), request), { redirect: "manual" });
+    hops++;
+  }
+  const headers = new Headers({
+    "content-type": asset.headers.get("content-type") || "text/html;charset=utf-8",
+    "cache-control": "no-store"
+  });
+  for (const [name, value] of Object.entries(securityHeaders)) {
+    if (!headers.has(name)) headers.set(name, value);
+  }
+  const csp = headers.get("content-security-policy") || "";
+  headers.set("content-security-policy", csp.replace("style-src 'self';", "style-src 'self' 'unsafe-inline';"));
+  return new Response(asset.body, { status: asset.status, headers });
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -1912,6 +1941,16 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/config") {
       return handleConfig(env, url);
+    }
+
+    // Swagger/OpenAPI docs (dev-facing): página + especificação. Rota explícita
+    // com CSP relaxada SÓ para style-src (o Swagger UI injeta estilos inline);
+    // o fallback de assets serviria com a CSP estrita e quebraria a UI.
+    if (request.method === "GET" && (url.pathname === "/docs" || url.pathname === "/docs/" || url.pathname === "/docs/index.html")) {
+      return serveDocs(env, url, request, "docs/index.html");
+    }
+    if (request.method === "GET" && url.pathname === "/docs/openapi.yaml") {
+      return serveDocs(env, url, request, "docs/openapi.yaml");
     }
 
     // /us = landing americana (experimento). landing_view NO mercado US conta

@@ -1,0 +1,804 @@
+openapi: 3.0.3
+info:
+  title: MatchVaga API
+  description: >
+    Resume-vs-job compatibility analysis API. A user submits their resume text
+    and a job description; the worker (Cloudflare Workers) returns a free
+    diagnostic preview and, after a one-time Stripe payment, unlocks the full
+    report.
+
+    The API is served by the same Cloudflare Worker that hosts the site, so
+    all calls below share the origin (no CORS needed). Requests are subject to
+    per-IP rate limits (3 free analyses/hour) and a daily global budget;
+    responses that exceed limits return `429`.
+
+    Public pages (not API): `GET /` (BR landing), `GET /us` (US landing),
+    `GET /privacidade|/termos|/privacy|/terms|/privacidad|/terminos` (legal),
+    `GET /dashboard?key=<STATS_KEY>` (owner funnel dashboard), and this
+    documentation at `/docs`.
+  version: 1.0.0
+  contact:
+    name: MatchVaga
+    url: https://matchvaga.kubezen.com
+servers:
+  - url: https://matchvaga.kubezen.com
+    description: Production (BR + US markets)
+  - url: https://matchvaga.matchvaga.workers.dev
+    description: Test/backup deployment (same code, separate KV)
+tags:
+  - name: Analysis
+    description: Free preview and paid unlock of the resume-vs-job analysis
+  - name: Payments
+    description: Stripe Checkout session creation and webhook receipt
+  - name: Analytics
+    description: Funnel events (client-side counters, no personal data)
+  - name: Ops
+    description: Status, configuration and owner-only statistics
+paths:
+  /api/preview:
+    post:
+      tags: [Analysis]
+      operationId: createAnalysisPreview
+      summary: Create a free analysis (diagnostic preview)
+      description: >
+        Generates the free diagnostic: compatibility score, short explanation,
+        up to 3 strengths, the count and titles of attention points, plus ONE
+        gap explained in detail. Paid-only content (rewrites, full table,
+        optimized CV, message, questions) is NEVER included in the response.
+        Identical inputs (content hash over cv+job+lang+market) hit the 24h KV
+        cache instead of the AI model. On AI failure the consumed rate-limit
+        slot is refunded, so a retry is possible immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cv, job]
+              properties:
+                cv:
+                  type: string
+                  minLength: 40
+                  maxLength: 10000
+                  description: Resume text (extracted client-side from PDF/DOCX, or pasted). Trimmed server-side.
+                  example: "Desenvolvedor full-stack com 5 anos de experiência em React, TypeScript, Node.js e APIs REST..."
+                job:
+                  type: string
+                  minLength: 30
+                  maxLength: 5000
+                  description: Job description text.
+                  example: "Desenvolvedor Front-end — React, TypeScript, experiência com APIs, testes automatizados..."
+                lang:
+                  type: string
+                  enum: [pt, en, es]
+                  default: pt
+                  description: Response language for AI-generated content and server error messages. "us" is normalized to "en" server-side.
+                market:
+                  type: string
+                  enum: [br, us]
+                  default: br
+                  description: Pricing/currency market. Stored with the result token server-side (checkout always uses the server-fixed market).
+                sid:
+                  type: string
+                  maxLength: 80
+                  description: Anonymous browser session id (sessionStorage), used for unique-session funnel counts.
+                turnstile:
+                  type: string
+                  description: Cloudflare Turnstile token. Verified ONLY when present (graceful degradation if the widget could not load).
+                utm:
+                  type: object
+                  description: Traffic attribution (utm_source/medium/campaign from the landing URL).
+                  properties:
+                    source: { type: string, maxLength: 40 }
+                    medium: { type: string }
+                    campaign: { type: string }
+                test:
+                  type: boolean
+                  description: Internal test flag (set via ?mv_test=1). Test events are excluded from commercial counters.
+      responses:
+        "200":
+          description: Free diagnostic preview created. The token unlocks the full report after payment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, market, price, preview]
+                properties:
+                  token:
+                    type: string
+                    pattern: "^[0-9a-f]{48}$"
+                    description: Analysis token; must be presented to /api/unlock and /api/checkout. Expires after 24h.
+                  market: { type: string, enum: [br, us] }
+                  price:
+                    type: string
+                    description: Display price for the market ("9,90" for br, "2.99" for us).
+                    example: "9,90"
+                  preview:
+                    $ref: "#/components/schemas/Preview"
+              examples:
+                br:
+                  summary: Brazilian market
+                  value:
+                    token: "7f3c9a1e5b2d4c8f0a6e1d3b5c7f9a0b2d4e6f8a1c3b5d7e9f0a2c4b6d8e0f"
+                    market: br
+                    price: "9,90"
+                    preview:
+                      score: 78
+                      score_explanation: "Seu currículo demonstra bem os requisitos técnicos principais, mas faltam evidências de liderança e métricas de impacto."
+                      strengths:
+                        - requirement: "React e TypeScript"
+                          explanation: "Mencionado com 3 anos de uso em projetos reais."
+                      attention_first:
+                        requirement: "Experiência com liderança de times"
+                        what_we_found: "A vaga pede liderança de squad."
+                        in_your_cv: "O currículo não menciona gestão de pessoas."
+                        interpretation: "Isso não significa que você não possui essa experiência — apenas que ela não está evidenciada."
+                        why: "É um requisito destacado no topo da vaga."
+                        what_to_do: "Se você já liderou times, adicione uma linha com contexto e período."
+                      attention_locked: ["Conhecimento em CI/CD", "Métricas de produto"]
+                      attention_count: 3
+                      price: "9,90"
+                      currency: brl
+                us:
+                  summary: US market
+                  value:
+                    token: "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a"
+                    market: us
+                    price: "2.99"
+                    preview:
+                      score: 82
+                      score_explanation: "Your resume clearly demonstrates the core technical requirements."
+                      strengths:
+                        - requirement: "REST APIs"
+                          explanation: "Built and maintained 12+ REST services."
+                      attention_first:
+                        requirement: "Experience with stakeholder communication"
+                        what_we_found: "The job asks for stakeholder-facing communication."
+                        in_your_cv: "No mention of stakeholder interactions."
+                        interpretation: "This does not mean you lack the experience — it is simply not evidenced."
+                        why: "Listed as a core requirement."
+                        what_to_do: "If you have presented to stakeholders, add one line with context."
+                      attention_locked: ["CI/CD", "Product metrics"]
+                      attention_count: 3
+                      price: "2.99"
+                      currency: usd
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          description: AI provider not configured on this deployment.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "Não conseguimos analisar seu currículo agora. Tente novamente em instantes." }
+        "503":
+          description: AI call failed (JSON parse/generation error after retries).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "504":
+          description: AI call timed out (25s hard cap). The rate-limit slot is refunded on failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/unlock:
+    post:
+      tags: [Analysis]
+      operationId: unlockPremiumReport
+      summary: Unlock the full (paid) report
+      description: >
+        Returns the complete PremiumResult for a token. Accepted when the
+        Stripe payment is confirmed (code empty, `paid:<token>` set by the
+        webhook) or when a valid manual UNLOCK_CODE is provided. Brute-force
+        protection: only code-bearing attempts are rate-limited (10/hour/IP).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  pattern: "^[0-9a-f]{48}$"
+                  description: Analysis token from /api/preview.
+                code:
+                  type: string
+                  description: Manual unlock code (owner-issued). Omit for the paid flow.
+                lang:
+                  type: string
+                  enum: [pt, en, es]
+                  default: pt
+                  description: Localizes the server error message.
+      responses:
+        "200":
+          description: Full premium report.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, premium]
+                properties:
+                  ok: { type: boolean, example: true }
+                  premium: { $ref: "#/components/schemas/PremiumResult" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          description: Invalid code and payment not confirmed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "Código inválido." }
+        "404":
+          description: Token expired (24h TTL) or never existed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "Sua análise expirou. Gere uma nova gratuitamente." }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/checkout:
+    post:
+      tags: [Payments]
+      operationId: createCheckoutSession
+      summary: Create a Stripe Checkout session for the analysis
+      description: >
+        Creates (or reuses) a Stripe Checkout session for the token's market —
+        BR R$ 9,90 (brl) or US $2.99 (usd), one-time payment, cards + boleto.
+        Idempotent: a second call for the same token returns the SAME session
+        URL (guard key `ck:<token>`). Rejects tokens that are all-zeros,
+        expired, already paid, or whose analysis is garbage (CV never read).
+        Success/cancel redirects go back to the same market's landing page.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  pattern: "^[0-9a-f]{48}$"
+                  description: Analysis token from /api/preview.
+                lang:
+                  type: string
+                  enum: [pt, en, es]
+                  default: pt
+                sid:
+                  type: string
+                  maxLength: 80
+                  description: Anonymous session id (funnel attribution of the sale).
+                market:
+                  type: string
+                  enum: [br, us]
+                  description: Fallback only — the server-fixed market stored with the token wins.
+                test:
+                  type: boolean
+                  description: Internal test flag (metadata[test] on the session; webhook ignores test sales).
+      responses:
+        "200":
+          description: Stripe Checkout session URL (same URL on repeat calls).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                    description: Redirect the user here to pay.
+                    example: "https://checkout.stripe.com/c/pay/cs_test_..."
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Analysis expired.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Already unlocked — do not pay again.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Analysis is empty/garbage (CV could not be read). Result deleted; re-run for free.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Stripe API error creating the session (logged server-side as checkout_error).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Stripe not configured on this deployment.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/stripe-webhook:
+    post:
+      tags: [Payments]
+      operationId: stripeWebhook
+      summary: Stripe webhook receiver (payment confirmation)
+      description: >
+        Receives `checkout.session.completed` and
+        `checkout.session.async_payment_succeeded` events. The request MUST
+        carry the `stripe-signature` header (HMAC-SHA256 with the webhook
+        secret, 5-minute timestamp tolerance); invalid signatures get 401.
+        Idempotent: double delivery of the same payment intent is ignored
+        (guard `pi:<payment_intent>`). A sale only counts when
+        amount_total/currency match the server-side price of the token's
+        market EXACTLY (BR 990/brl, US 299/usd) — tampered amounts are
+        acknowledged but ignored (`ignored: "amount_mismatch"`), and the
+        analysis is NOT unlocked. Test sessions (metadata[test]=1) are
+        acknowledged but not counted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: string, example: "evt_1QxYZ..." }
+                type:
+                  type: string
+                  enum: [checkout.session.completed, checkout.session.async_payment_succeeded]
+                data:
+                  type: object
+                  properties:
+                    object:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        amount_total: { type: integer, description: "In cents, e.g. 990 or 299." }
+                        currency: { type: string, example: brl }
+                        payment_intent: { type: string }
+                        metadata:
+                          type: object
+                          properties:
+                            token: { type: string, pattern: "^[0-9a-f]{48}$" }
+                            market: { type: string, enum: [br, us] }
+                            test: { type: string, example: "1" }
+      responses:
+        "200":
+          description: Event acknowledged.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [received]
+                    properties:
+                      received: { type: boolean, example: true }
+                  - type: object
+                    required: [received, ignored]
+                    properties:
+                      received: { type: boolean, example: true }
+                      ignored:
+                        type: string
+                        enum: [amount_mismatch]
+                        description: Event accepted but not counted (price/currency did not match the token's market).
+        "401":
+          description: Invalid or missing stripe-signature.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "Assinatura inválida." }
+
+  /api/event:
+    post:
+      tags: [Analytics]
+      operationId: trackFunnelEvent
+      summary: Track a funnel event (anonymous counters only)
+      description: >
+        Client-side funnel tracking. No personal data — only stage + market +
+        session id + optional UTM source. Each session id counts at most once
+        per stage (guard `seen:<stage>:<sid>`, 31d TTL); refreshes do not
+        inflate. Silently rate-limited (60 events/hour/IP) — always returns
+        `{ok:true}` so tracking never breaks the app. `landing_view` is NOT
+        sent by the client (it is counted server-side on GET / and GET /us).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stage]
+              properties:
+                stage:
+                  $ref: "#/components/schemas/FunnelStage"
+                market:
+                  type: string
+                  enum: [br, us]
+                  default: br
+                sid:
+                  type: string
+                  maxLength: 80
+                  description: Anonymous session id (sessionStorage). Required for unique counts.
+                utm:
+                  type: object
+                  properties:
+                    source: { type: string, maxLength: 40 }
+                    medium: { type: string }
+                    campaign: { type: string }
+                test:
+                  type: boolean
+                  description: Internal test flag — excluded from commercial counters.
+      responses:
+        "200":
+          description: Accepted (or silently rate-limited).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        "400":
+          description: Unknown stage or invalid JSON.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "Evento desconhecido." }
+
+  /api/status:
+    get:
+      tags: [Ops]
+      operationId: getStatus
+      summary: Service status (budget, model, payment/captcha readiness)
+      responses:
+        "200":
+          description: Current status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [budget, model, price, price_usd, stripe, turnstile]
+                properties:
+                  budget:
+                    type: object
+                    properties:
+                      used: { type: integer, description: "Free analyses used today (UTC)." }
+                      limit: { type: integer }
+                      remaining: { type: integer }
+                  model: { type: string, example: deepseek-v4-flash }
+                  price: { type: string, example: "9,90", description: "BR display price." }
+                  price_usd: { type: string, example: "2.99", description: "US display price." }
+                  stripe: { type: boolean, description: "Stripe secret configured." }
+                  turnstile: { type: boolean, description: "Turnstile secret configured." }
+
+  /api/config:
+    get:
+      tags: [Ops]
+      operationId: getPublicConfig
+      summary: Public client configuration (Turnstile sitekey, prices)
+      parameters:
+        - name: market
+          in: query
+          required: false
+          schema: { type: string, enum: [br, us], default: br }
+          description: Market whose price/currency is returned.
+      responses:
+        "200":
+          description: Client configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [turnstile_sitekey, price, currency]
+                properties:
+                  turnstile_sitekey:
+                    type: string
+                    description: Cloudflare Turnstile site key (empty = widget disabled).
+                  price: { type: string, example: "9,90" }
+                  currency: { type: string, example: brl }
+
+  /api/stats:
+    get:
+      tags: [Ops]
+      operationId: getFunnelStats
+      summary: Owner-only funnel statistics (requires STATS_KEY)
+      description: >
+        Funnel analytics for the owner dashboard. Aggregated in a Durable
+        Object (single RPC, zero KV reads — header `x-kv-ops: 0`). Every
+        response includes BR vs US comparison. The dashboard UI lives at
+        `/dashboard?key=<STATS_KEY>`.
+      parameters:
+        - name: key
+          in: query
+          required: true
+          description: Owner key (STATS_KEY secret). Without it the endpoint returns 403.
+          schema: { type: string }
+        - name: days
+          in: query
+          required: false
+          description: Window in days (1= today, 7, 30, 0= all-time totals). Clamped to 0-365.
+          schema: { type: integer, minimum: 0, maximum: 365, default: 1 }
+        - name: market
+          in: query
+          required: false
+          description: Market filter (br, us, or all — default all, BR+US summed).
+          schema: { type: string, enum: [br, us, all], default: all }
+      responses:
+        "200":
+          description: Aggregated funnel data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stats" }
+        "403":
+          description: Missing or wrong key.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "Acesso negado." }
+
+  /api/stats/backfill:
+    post:
+      tags: [Ops]
+      operationId: backfillStats
+      summary: One-time KV → Durable Object backfill (owner only)
+      description: >
+        Scans the KV counters once and rebuilds the aggregated documents in
+        the Durable Object. Excepcional maintenance operation (needs KV read
+        quota); normally never called — all counters are mirrored to the DO in
+        real time.
+      parameters:
+        - name: key
+          in: query
+          required: true
+          description: Owner key (STATS_KEY secret).
+          schema: { type: string }
+      responses:
+        "200":
+          description: Backfill finished (result summary).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        "403":
+          description: Missing or wrong key.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable message (localized per the request lang where applicable).
+
+    Strength:
+      type: object
+      required: [requirement, explanation]
+      properties:
+        requirement: { type: string, description: "Job requirement the resume demonstrates." }
+        explanation: { type: string, description: "Evidence found in the resume." }
+
+    Attention:
+      type: object
+      description: One gap between the job requirements and the resume.
+      required: [requirement, what_we_found, in_your_cv, interpretation, why, what_to_do]
+      properties:
+        requirement: { type: string, description: "Requirement title." }
+        what_we_found: { type: string, description: "What the job asks for." }
+        in_your_cv: { type: string, description: "What we found (or did not find) in the resume." }
+        interpretation: { type: string, description: "Absence in the CV ≠ lack of knowledge — explicit disclaimer." }
+        why: { type: string, description: "Why it deserves attention." }
+        what_to_do: { type: string, description: "Conditional, honest recommendation." }
+
+    Rewrite:
+      type: object
+      required: [original, suggestion, why]
+      properties:
+        original: { type: string, description: "Original resume phrase." }
+        suggestion: { type: string, description: "Safe rewrite (facts only, nothing invented)." }
+        why: { type: string }
+
+    RequirementGroup:
+      type: object
+      properties:
+        category: { type: string }
+        items: { type: array, items: { type: string } }
+
+    TableRow:
+      type: object
+      properties:
+        requirement: { type: string }
+        situation: { type: string }
+        evidence: { type: string }
+
+    PremiumResult:
+      type: object
+      description: >
+        The complete paid report. Every suggestion is grounded in the
+        submitted document only — the model is explicitly forbidden from
+        inventing experience. Served by /api/unlock after payment.
+      required:
+        - score
+        - score_explanation
+        - requirements
+        - table
+        - strengths
+        - attention
+        - rewrites
+        - recommendations
+        - keywords
+        - optimized_cv
+        - recruiter_message
+        - interview_questions
+      properties:
+        score: { type: integer, minimum: 0, maximum: 100 }
+        score_explanation: { type: string }
+        requirements: { type: array, items: { $ref: "#/components/schemas/RequirementGroup" } }
+        table:
+          type: array
+          description: Requirement × situation × evidence table.
+          items: { $ref: "#/components/schemas/TableRow" }
+        strengths: { type: array, items: { $ref: "#/components/schemas/Strength" } }
+        attention: { type: array, items: { $ref: "#/components/schemas/Attention" } }
+        rewrites:
+          type: array
+          description: Copy-ready safe rewrites (badge "pode copiar").
+          items: { $ref: "#/components/schemas/Rewrite" }
+        recommendations:
+          type: array
+          description: Conditional opportunities (badge "se você possui a experiência").
+          items: { type: string }
+        keywords: { type: array, items: { type: string } }
+        optimized_cv: { type: string, description: "Resume optimized for the job — only facts from the original document." }
+        recruiter_message: { type: string }
+        interview_questions:
+          type: array
+          description: Interview prep (may probe gaps — preparation, not a claim).
+          items: { type: string }
+
+    Preview:
+      type: object
+      description: Free diagnostic slice. Locked content appears only as titles.
+      required: [score, score_explanation, strengths, attention_first, attention_locked, attention_count, price, currency]
+      properties:
+        score: { type: integer, minimum: 0, maximum: 100 }
+        score_explanation: { type: string }
+        strengths: { type: array, items: { $ref: "#/components/schemas/Strength" }, description: "Up to 3." }
+        attention_first:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Attention"
+          description: The single gap explained in full (the free tier's one detailed insight). Null when there are no gaps.
+        attention_locked:
+          type: array
+          description: Titles of the remaining gaps (content locked 🔒).
+          items: { type: string }
+        attention_count: { type: integer }
+        price: { type: string }
+        currency: { type: string, example: brl }
+
+    FunnelStage:
+      type: string
+      description: Funnel stage identifier (unique sessions per stage; landing_view is server-side only).
+      enum:
+        - landing_view
+        - session_view
+        - resume_uploaded
+        - job_description_added
+        - analysis_started
+        - analysis_completed
+        - result_viewed
+        - free_insight_viewed
+        - locked_insights_viewed
+        - unlock_clicked
+        - checkout_started
+        - checkout_session_created
+        - checkout_error
+        - payment_completed
+        - full_report_viewed
+
+    Stats:
+      type: object
+      description: Aggregated funnel statistics (Durable Object, per-market and merged).
+      properties:
+        day: { type: string, format: date, example: "2026-08-13" }
+        days: { type: integer }
+        market: { type: string, enum: [br, us, all] }
+        reliable_since: { type: string, format: date-time, description: "Metrics are trustworthy from this instant (instrumentation v2)." }
+        sources:
+          type: array
+          description: UTM traffic sources (landings and paid conversions).
+          items:
+            type: object
+            properties:
+              source: { type: string }
+              landings: { type: integer }
+              paid: { type: integer }
+        window:
+          type: object
+          additionalProperties: { type: integer }
+          description: Unique sessions per stage in the selected window.
+        today: { type: object, additionalProperties: { type: integer } }
+        total: { type: object, additionalProperties: { type: integer } }
+        raw:
+          type: object
+          description: Raw event counts (secondary KPI — not part of the funnel).
+          properties:
+            window: { type: object, additionalProperties: { type: integer } }
+            today: { type: object, additionalProperties: { type: integer } }
+            total: { type: object, additionalProperties: { type: integer } }
+        checkout:
+          type: object
+          description: Checkout diagnosis (distinguishes creation bugs from abandonment).
+          properties:
+            unlock_clicked: { type: integer }
+            checkout_session_created: { type: integer }
+            checkout_error: { type: integer }
+            payment_completed: { type: integer }
+        revenue:
+          type: object
+          description: Real revenue per market (sum of confirmed payments — never count × price).
+          properties:
+            br: { $ref: "#/components/schemas/Revenue" }
+            us: { $ref: "#/components/schemas/Revenue" }
+        conv:
+          type: object
+          description: Stage-to-stage conversion rates in the window (percent strings).
+          additionalProperties: { type: string }
+        convTotal:
+          type: object
+          description: Same conversions over all-time totals.
+          additionalProperties: { type: string }
+        markets:
+          type: object
+          description: BR vs US comparison (always present).
+          properties:
+            br:
+              type: object
+              properties:
+                window: { type: object, additionalProperties: { type: integer } }
+                total: { type: object, additionalProperties: { type: integer } }
+                conv: { type: object, additionalProperties: { type: string } }
+            us:
+              type: object
+              properties:
+                window: { type: object, additionalProperties: { type: integer } }
+                total: { type: object, additionalProperties: { type: integer } }
+                conv: { type: object, additionalProperties: { type: string } }
+
+    Revenue:
+      type: object
+      properties:
+        amount: { type: integer, description: "Sum in the market's minor unit (cents)." }
+        count: { type: integer }
+
+  responses:
+    BadRequest:
+      description: Invalid JSON, missing/invalid fields, or failed anti-bot verification.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: cv > 10000 chars or job > 5000 chars.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Daily budget exhausted or per-IP/hour rate limit reached.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Seconds until the window resets (hourly).
