@@ -2,7 +2,7 @@
 // Carregado ANTES de app.js/dashboard.js/extract.js. Expõe:
 //   window.t(key, vars)  → texto no idioma atual ({n} interpolado)
 //   window.MV_LANG       → 'pt' | 'en' | 'es'
-//   window.applyI18n()   → aplica [data-i18n]/[data-i18n-ph]/[data-i18n-aria]
+//   window.applyI18n()   → aplica [data-i18n]/[data-i18n-ph]/[data-i18n-aria]/[data-i18n-href]
 //   window.initLangSelector(id) → liga o <select> + persistência
 (function () {
   const L10N = {
@@ -135,6 +135,8 @@
       "footer.privacyBody": "Seu arquivo é lido no seu navegador e nunca é enviado — apenas o texto extraído é usado para gerar sua análise. A análise é armazenada temporariamente e removida automaticamente após 24 horas.",
       "footer.linkPrivacy": "Privacidade",
       "footer.linkTerms": "Termos de uso",
+      "footer.hrefPrivacy": "/privacidade",
+      "footer.hrefTerms": "/termos",
       // dashboard
       "dash.title": "MatchVaga · Funil de conversão",
       "dash.sourcesTitle": "Fontes de tráfego (UTM)",
@@ -337,7 +339,9 @@
       "footer.privacy": "Privacy notice:",
       "footer.privacyBody": "Your file is read in your browser and never uploaded — only the extracted text is used to generate your analysis. The analysis is stored temporarily and automatically removed after 24 hours.",
       "footer.linkPrivacy": "Privacy",
-      "footer.linkTerms": "Terms of use"
+      "footer.linkTerms": "Terms of use",
+      "footer.hrefPrivacy": "/privacy",
+      "footer.hrefTerms": "/terms"
     },
     es: {
       "lang.name": "Español",
@@ -466,7 +470,9 @@
       "footer.privacy": "Aviso de privacidad:",
       "footer.privacyBody": "Tu archivo se lee en tu navegador y nunca se envía — solo el texto extraído se usa para generar tu análisis. El análisis se almacena temporalmente y se elimina automáticamente después de 24 horas.",
       "footer.linkPrivacy": "Privacidad",
-      "footer.linkTerms": "Términos de uso"
+      "footer.linkTerms": "Términos de uso",
+      "footer.hrefPrivacy": "/privacidad",
+      "footer.hrefTerms": "/terminos"
     },
     us: {
       // en-US nativo (mercado americano — experimento). "resume", nunca "CV".
@@ -596,7 +602,9 @@
       "footer.privacy": "Privacy notice:",
       "footer.privacyBody": "Your file is read in your browser and never uploaded — only the extracted text is used to generate your analysis. The analysis is stored temporarily and automatically removed after 24 hours.",
       "footer.linkPrivacy": "Privacy",
-      "footer.linkTerms": "Terms of use"
+      "footer.linkTerms": "Terms of use",
+      "footer.hrefPrivacy": "/privacy",
+      "footer.hrefTerms": "/terms"
     }
   };
 
@@ -647,6 +655,9 @@
     });
     document.querySelectorAll("[data-i18n-aria]").forEach(el => {
       el.setAttribute("aria-label", window.t(el.getAttribute("data-i18n-aria")));
+    });
+    document.querySelectorAll("[data-i18n-href]").forEach(el => {
+      el.setAttribute("href", window.t(el.getAttribute("data-i18n-href")));
     });
     // atualiza o título da página
     if (document.title && window.t("hero.title") && !document.title.includes("MatchVaga —")) {

@@ -1738,7 +1738,11 @@ const US_BODY_TRANSLATIONS: [string, string][] = [
   ["Aviso de privacidade:", "Privacy notice:"],
   ["Seu arquivo é lido no seu navegador e nunca é enviado — apenas o texto extraído é usado para gerar sua análise. A análise é armazenada temporariamente e removida automaticamente após 24 horas.", "Your file is read in your browser and never uploaded — only the extracted text is used to generate your analysis. The analysis is stored temporarily and automatically removed after 24 hours."],
   [">Privacidade<", ">Privacy<"],
-  [">Termos de uso<", ">Terms of use<"]
+  [">Termos de uso<", ">Terms of use<"],
+  // Links legais do /us apontam para as PÁGINAS em inglês (URL traduzida
+  // também, não só o label): /privacy e /terms servidos por LEGAL_PAGES.
+  ["href=\"/privacidade\"", "href=\"/privacy\""],
+  ["href=\"/termos\"", "href=\"/terms\""]
 ];
 
 function injectUsLanding(html: string): string {
@@ -1802,6 +1806,39 @@ async function serveLanding(env: Env, url: URL, request: Request, market: Market
     if (!headers.has(name)) headers.set(name, value);
   }
   return new Response(body, { status: asset.status, headers });
+}
+
+// ── Páginas legais localizadas ─────────────────────────────────────
+// /privacidade e /termos (PT) + /privacy e /terms (EN) + /privacidad e
+// /terminos (ES). Servidas AQUI (e não no fallback de assets) para
+// garantir no-store + security headers: o fallback cachearia HTML
+// extensão-less com "public, max-age=86400" (texto legal velho por 24h).
+const LEGAL_PAGES: Record<string, string> = {
+  "/privacidade": "privacidade.html",
+  "/termos": "termos.html",
+  "/privacy": "privacy.html",
+  "/terms": "terms.html",
+  "/privacidad": "privacidad.html",
+  "/terminos": "terminos.html"
+};
+
+async function serveLegal(env: Env, url: URL, request: Request, assetPath: string): Promise<Response> {
+  let asset = await env.ASSETS.fetch(new Request(new URL(`/${assetPath}`, url), request), { redirect: "manual" });
+  let hops = 0;
+  while ((asset.status === 301 || asset.status === 302 || asset.status === 307 || asset.status === 308) && hops < 4) {
+    const loc = asset.headers.get("location");
+    if (!loc) break;
+    asset = await env.ASSETS.fetch(new Request(new URL(loc, url), request), { redirect: "manual" });
+    hops++;
+  }
+  const headers = new Headers({
+    "content-type": asset.headers.get("content-type") || "text/html;charset=utf-8",
+    "cache-control": "no-store"
+  });
+  for (const [name, value] of Object.entries(securityHeaders)) {
+    if (!headers.has(name)) headers.set(name, value);
+  }
+  return new Response(asset.body, { status: asset.status, headers });
 }
 
 export default {
@@ -1897,6 +1934,12 @@ export default {
         await bump(env, "landing_view", "br", ctx);
         await bumpLandingUtm(env, url, "br", ctx);
       }
+    }
+
+    // Páginas legais localizadas — /privacidade e /termos (PT), /privacy e
+    // /terms (EN), /privacidad e /terminos (ES). Não contam analytics.
+    if (request.method === "GET" && LEGAL_PAGES[url.pathname]) {
+      return serveLegal(env, url, request, LEGAL_PAGES[url.pathname]);
     }
 
     const asset = await env.ASSETS.fetch(request);
