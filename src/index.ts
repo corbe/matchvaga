@@ -69,12 +69,7 @@ const securityHeaders: Record<string, string> = {
 };
 
 function json(data: unknown, status = 200) {
-  // CORS público (sem credenciais — não há cookies/auth): permite o console
-  // Swagger (swagger.kubezen.com) e consumidores externos lerem as respostas.
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...jsonHeaders, "access-control-allow-origin": "*" }
-  });
+  return new Response(JSON.stringify(data), { status, headers: jsonHeaders });
 }
 
 function randomToken() {
@@ -1507,8 +1502,6 @@ async function handleStats(env: Env, url: URL) {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "private, max-age=60",
       "x-content-type-options": "nosniff",
-      // CORS público (o payload exige ?key= — o header não enfraquece o gate).
-      "access-control-allow-origin": "*",
       // Instrumentação de consumo: operações KV executadas neste request.
       "x-kv-ops": String(kvOps)
     }
@@ -1848,45 +1841,6 @@ async function serveLegal(env: Env, url: URL, request: Request, assetPath: strin
   return new Response(asset.body, { status: asset.status, headers });
 }
 
-// ── Swagger/OpenAPI docs ─────────────────────────────────────────
-// Console de documentação em swagger.kubezen.com (custom domain binding no
-// MESMO worker) servindo a spec do ZEN MON API (public/docs/v1.json, cópia
-// verbatim de zen-mon/api/openapi/v1.json) + backup do spec do MatchVaga em
-// /docs no host da aplicação. Página de desenvolvedor: Swagger UI self-hosted
-// (public/vendor/swagger-ui) + especificação servida com no-store.
-// Rota EXPLÍCITA porque o fallback de assets aplicaria a CSP estrita do site
-// (style-src 'self') e o Swagger UI injeta estilos inline em runtime → a CSP
-// desta rota relaxa SÓ style-src e amplia connect-src p/ os hosts da API
-// (try-it-out cross-origin). Não conta analytics; é estático, sem rate limit.
-// A página leva <meta name="robots" content="noindex">.
-const DOCS_HOST = "swagger.kubezen.com";
-
-async function serveDocs(env: Env, url: URL, request: Request, assetPath: string): Promise<Response> {
-  let asset = await env.ASSETS.fetch(new Request(new URL(`/${assetPath}`, url), request), { redirect: "manual" });
-  let hops = 0;
-  while ((asset.status === 301 || asset.status === 302 || asset.status === 307 || asset.status === 308) && hops < 4) {
-    const loc = asset.headers.get("location");
-    if (!loc) break;
-    asset = await env.ASSETS.fetch(new Request(new URL(loc, url), request), { redirect: "manual" });
-    hops++;
-  }
-  const headers = new Headers({
-    "content-type": asset.headers.get("content-type") || "text/html;charset=utf-8",
-    "cache-control": "no-store"
-  });
-  for (const [name, value] of Object.entries(securityHeaders)) {
-    if (!headers.has(name)) headers.set(name, value);
-  }
-  const csp = headers.get("content-security-policy") || "";
-  headers.set(
-    "content-security-policy",
-    csp
-      .replace("style-src 'self';", "style-src 'self' 'unsafe-inline';")
-      .replace("connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com;", "connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com https://matchvaga.kubezen.com https://matchvaga.matchvaga.workers.dev;")
-  );
-  return new Response(asset.body, { status: asset.status, headers });
-}
-
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -1896,35 +1850,6 @@ export default {
     // localhost fica de fora (dev roda em http puro).
     if (url.protocol === "http:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
       return Response.redirect(`https://${url.host}${url.pathname}${url.search}`, 301);
-    }
-
-    // CORS preflight p/ /api/* (console Swagger + consumidores externos).
-    // As respostas JSON já levam access-control-allow-origin: *.
-    if (request.method === "OPTIONS" && url.pathname.startsWith("/api/")) {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, POST, OPTIONS",
-          "access-control-allow-headers": "content-type, stripe-signature",
-          "access-control-max-age": "86400"
-        }
-      });
-    }
-
-    // swagger.kubezen.com = console de documentação (custom domain no MESMO
-    // worker). "/" serve a UI do Swagger e /v1.json a spec do Zen Mon API
-    // (cópia verbatim de zen-mon/api/openapi/v1.json — ver public/docs/README).
-    // ANTES das rotas de landing (senão GET / contaria landing_view). Demais
-    // rotas do host (/api/*, /vendor/*, assets) seguem o fluxo normal.
-    if (request.method === "GET" && url.hostname === DOCS_HOST) {
-      if (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/docs" || url.pathname === "/docs/") {
-        return serveDocs(env, url, request, "docs/index.html");
-      }
-      // Aliases servem o MESMO spec Zen Mon: /v1.json, /openapi.json, /openapi.yaml.
-      if (url.pathname === "/v1.json" || url.pathname === "/openapi.json" || url.pathname === "/openapi.yaml") {
-        return serveDocs(env, url, request, "docs/v1.json");
-      }
     }
 
     if (request.method === "POST" && url.pathname === "/api/preview") {
@@ -1987,16 +1912,6 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/config") {
       return handleConfig(env, url);
-    }
-
-    // Swagger/OpenAPI docs (dev-facing): página + especificação. Rota explícita
-    // com CSP relaxada SÓ para style-src (o Swagger UI injeta estilos inline);
-    // o fallback de assets serviria com a CSP estrita e quebraria a UI.
-    if (request.method === "GET" && (url.pathname === "/docs" || url.pathname === "/docs/" || url.pathname === "/docs/index.html")) {
-      return serveDocs(env, url, request, "docs/index.html");
-    }
-    if (request.method === "GET" && url.pathname === "/docs/openapi.yaml") {
-      return serveDocs(env, url, request, "docs/openapi.yaml");
     }
 
     // /us = landing americana (experimento). landing_view NO mercado US conta
