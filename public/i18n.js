@@ -132,6 +132,8 @@
       // footer
       "footer.privacy": "Aviso de privacidade: seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.",
       "footer.privacyBody": "seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.",
+      "footer.linkPrivacy": "Privacidade",
+      "footer.linkTerms": "Termos de uso",
       // dashboard
       "dash.title": "MatchVaga · Funil de conversão",
       "dash.sourcesTitle": "Fontes de tráfego (UTM)",
@@ -331,7 +333,9 @@
       "dash.cInsightsCheckout": "insights → checkout",
       "dash.cCheckoutPaid": "checkout → payment",
       "dash.cSessPaid": "session → payment",
-      "footer.privacy": "Privacy notice: your résumé is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties."
+      "footer.privacy": "Privacy notice: your résumé is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties.",
+      "footer.linkPrivacy": "Privacy",
+      "footer.linkTerms": "Terms of use"
     },
     es: {
       "lang.name": "Español",
@@ -457,19 +461,21 @@
       "dash.cInsightsCheckout": "insights → checkout",
       "dash.cCheckoutPaid": "checkout → pago",
       "dash.cSessPaid": "sesión → pago",
-      "footer.privacy": "Aviso de privacidad: tu currículum se usa exclusivamente para generar tu análisis, se almacena temporalmente y se elimina automáticamente después de 24 horas. No se comparte con terceros."
+      "footer.privacy": "Aviso de privacidad: tu currículum se usa exclusivamente para generar tu análisis, se almacena temporalmente y se elimina automáticamente después de 24 horas. No se comparte con terceros.",
+      "footer.linkPrivacy": "Privacidad",
+      "footer.linkTerms": "Términos de uso"
     },
     us: {
       // en-US nativo (mercado americano — experimento). "resume", nunca "CV".
       "lang.name": "English (US)",
-      // hero
+      // hero (spec #4)
       "hero.badge": "✓ Free initial analysis",
-      "hero.title": "See how well your resume matches the job before you apply.",
-      "hero.sub": "Get your match score, missing skills, and personalized improvements in about 60 seconds.",
-      "hero.cta": "Analyze My Resume — Free",
-      "hero.note": "No account required · Results in ~60 seconds · PDF or DOCX",
+      "hero.title": "Is your resume showing why you're a good match for this job?",
+      "hero.sub": "Compare your resume with the job requirements and see what's clearly demonstrated — and what may be underrepresented.",
+      "hero.cta": "Analyze my resume",
+      "hero.note": "Free initial analysis · No signup required",
       "hero.pasteLink": "Prefer to paste your resume text? Go to the form →",
-      // form
+      // form (spec #5)
       "form.title": "Free analysis in 2 steps",
       "form.cv": "1. Your resume",
       "form.upload": "Upload PDF or DOCX",
@@ -478,17 +484,17 @@
       "form.trust1": "✓ Free initial analysis",
       "form.trust2": "✓ No account required",
       "form.trust3": "✓ PDF and DOCX supported · your file never leaves your browser",
-      "form.privacy": "🔒 Only the extracted text is sent to generate the analysis — nothing is stored permanently.",
+      "form.privacy": "🔒 Your resume is used only to perform this analysis.",
       "form.pasteToggle": "Prefer to paste your resume text?",
       "form.cvPlaceholder": "Paste your resume text here...",
       "form.job": "2. Job description",
-      "form.jobPlaceholder": "Paste the job description (e.g.: 'Front-end Developer — React, TypeScript, API experience…')",
-      "form.analyze": "Check My Match — Free",
-      // loading / live
-      "load.reading": "Reading your resume",
-      "load.requirements": "Identifying job requirements",
-      "load.comparing": "Comparing your experience",
-      "load.finishing": "Finishing your report...",
+      "form.jobPlaceholder": "Paste the job description here",
+      "form.analyze": "Analyze compatibility",
+      // loading / live (spec #6)
+      "load.reading": "Reading your resume...",
+      "load.requirements": "Identifying job requirements...",
+      "load.comparing": "Comparing your experience...",
+      "load.finishing": "Preparing your results...",
       "live.confirming": "Confirming payment",
       "live.generating": "Generating your full report",
       "load.fileReading": "Reading file...",
@@ -506,16 +512,16 @@
       "err.analysis": "Analysis failed.",
       "btn.tryAgain": "Try again",
       "btn.analyzing": "Analyzing...",
-      // result
-      "result.scoreLabel": "Resume Match",
+      // result (spec #7)
+      "result.scoreLabel": "Match with this job",
       "result.scoreTipAria": "What the score means",
       "result.scoreTip": "The score compares information found in your resume with the requirements identified in the job description. It does not predict hiring.",
       "result.strengths": "What your resume demonstrates well",
-      "result.attentionTitle": "We found {n} points worth attention",
-      "result.attentionTitle1": "We found 1 point worth attention",
-      // paywall
-      "paywall.title": "Your analysis still has {n} points",
-      "paywall.title1": "Your analysis still has 1 point",
+      "result.attentionTitle": "We found {n} more areas worth reviewing",
+      "result.attentionTitle1": "One area worth reviewing",
+      // paywall (spec #10)
+      "paywall.title": "We found more areas worth reviewing",
+      "paywall.title1": "We found 1 more area worth reviewing",
       "paywall.kitTitle": "Unlock your full analysis",
       "paywall.kit1": "✓ Missing skills and keywords",
       "paywall.kit2": "✓ Resume weaknesses",
@@ -523,7 +529,7 @@
       "paywall.kit4": "✓ Personalized improvements",
       "paywall.kit5": "✓ Safe rewrite suggestions",
       "paywall.kit6": "✓ A message for the hiring manager",
-      "paywall.cta": "Unlock Full Analysis — $2.99",
+      "paywall.cta": "See full analysis",
       "paywall.retry": "Unlock my analysis (already paid)",
       "paywall.once": "$2.99 · one-time payment",
       "paywall.payNote": "Secure checkout — cards accepted · powered by Stripe.",
@@ -585,7 +591,9 @@
       "faq.a6": "Your resume text is used only to generate your analysis, is stored temporarily on Cloudflare's infrastructure and is automatically removed after 24 hours. It is not shared with third parties.",
       // footer
       "footer.privacy": "Privacy notice: your resume is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties.",
-      "footer.privacyBody": "your resume is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties."
+      "footer.privacyBody": "your resume is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties.",
+      "footer.linkPrivacy": "Privacy",
+      "footer.linkTerms": "Terms of use"
     }
   };
 

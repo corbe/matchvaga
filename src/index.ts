@@ -575,7 +575,7 @@ async function callOpenAI(env: Env, cv: string, job: string, lang = "pt", market
 
 IDIOMA DA RESPOSTA: escreva TODOS os textos da resposta (score_explanation, requirements, table, strengths, attention, rewrites, recommendations, keywords, optimized_cv, recruiter_message, interview_questions) no idioma: ${LANG_NAMES[lang] || "Português"}. Isso é obrigatório.
 ${market === "us"
-    ? "\nTERMINOLOGIA (mercado americano): use inglês americano natural — 'resume' (NUNCA 'CV'), 'job description', 'job requirements', 'hiring manager', 'Applicant Tracking System (ATS)', 'apply'. Os textos devem soar como escritos por um candidato nativo dos EUA.\n"
+    ? "\noutput_language = English (mandatory).\nTERMINOLOGIA (mercado americano): use inglês americano natural — 'resume' (NUNCA 'CV'), 'job description', 'job requirements', 'hiring manager', 'Applicant Tracking System (ATS)', 'apply'. Os textos devem soar como escritos por um candidato nativo dos EUA.\n"
     : ""}
 REGRAS DE INTEGRIDADE (obrigatórias):
 - NUNCA invente experiência, empresa, cargo, tecnologia, certificação ou resultado.
@@ -998,6 +998,18 @@ async function handleStripeWebhook(request: Request, env: Env, ctx?: ExecutionCo
       //    também serve (checkout sem PI, ex. PIX ainda pendente).
       const piId = String(session?.payment_intent || session?.id || "");
       const piKey = `pi:${piId}`;
+      // Segurança do preço (spec §15): a venda só conta se amount/currency
+      // batem EXATAMENTE com o preço server-side do mercado (US = 299/usd,
+      // BR = 990/brl). Um webhook com valor adulterado (ex.: $0.01) é
+      // rejeitado: nada de payment_completed, nada de desbloqueio.
+      const amountTotal = Number(session?.amount_total) || 0;
+      const currency = String(session?.currency || "").toLowerCase();
+      const expectedAmount = priceToCents(marketPrice(env, market));
+      const expectedCurrency = marketCurrency(market);
+      if (amountTotal !== expectedAmount || currency !== expectedCurrency) {
+        console.error(`[stripe] VALOR INESPERADO rejeitado: token ${token.slice(0, 8)}… ${currency} ${amountTotal} (esperado ${expectedCurrency} ${expectedAmount}, market ${market})`);
+        return json({ received: true, ignored: "amount_mismatch" });
+      }
       if (await env.RESULTS.get(piKey)) {
         // Já contabilizado — reentrega do webhook.
         return json({ received: true });
@@ -1009,8 +1021,6 @@ async function handleStripeWebhook(request: Request, env: Env, ctx?: ExecutionCo
         // currency, market, analysis_id — a receita NUNCA é count × preço
         // (preços/moedas podem variar BR×US e no futuro), é a soma dos
         // pagamentos reais confirmados.
-        const amountTotal = Number(session?.amount_total) || 0;
-        const currency = String(session?.currency || "").toLowerCase();
         await env.RESULTS.put(
           `pay:${token}`,
           JSON.stringify({
@@ -1646,13 +1656,87 @@ async function handleConfig(env: Env, url: URL) {
 }
 
 // ── Landing dos EUA (/us) ────────────────────────────────────────
-// O MESMO index.html da versão BR, com head en-US injetado: título SEO,
-// meta description, canonical, Open Graph/Twitter e o marcador mv-market
-// que o cliente lê para ativar o dicionário "us" e o funil do mercado US.
-const US_META_TITLE = "Resume Job Match Checker — See How Well Your Resume Fits the Job";
+// O MESMO index.html da versão BR, mas com o CORPO também em inglês
+// (não só o head): o spec exige que /us seja inglês DESDE O PRIMEIRO
+// RENDER, sem depender de JS client-side. Antes, o body era o index.html
+// PT e o applyI18n() trocava os textos só depois do load do JS — flash de
+// português e página PT se o JS falhasse/cacheasse.
+const US_META_TITLE = "MatchVaga — Compare Your Resume With a Job";
 const US_META_DESC =
-  "Upload your resume, paste the job description and get your match score, missing skills and personalized improvements in about 60 seconds. Free initial analysis.";
+  "Compare your resume with a job description and see which requirements are clearly demonstrated and what may be underrepresented.";
 const US_CANONICAL = "https://matchvaga.kubezen.com/us";
+
+// Tradução server-side do corpo (PT → en-US), casada com o dicionário "us"
+// do i18n.js. Só cobre o index.html estático; o conteúdo dinâmico (resultado
+// da IA, labels do resultado) vem do dicionário "us" no cliente.
+const US_BODY_TRANSLATIONS: [string, string][] = [
+  ["✓ Análise grátis", "✓ Free initial analysis"],
+  ["Descubra em 1 minuto se seu currículo está alinhado com a vaga.", "Is your resume showing why you're a good match for this job?"],
+  ["Envie seu currículo, cole a descrição da vaga e veja na hora: o quanto você é compatível, o que já atende e o que pode melhorar antes de se candidatar.", "Compare your resume with the job requirements and see what's clearly demonstrated — and what may be underrepresented."],
+  ["Analisar meu currículo grátis", "Analyze my resume"],
+  ["Sem cadastro · Resultado em ~1 minuto · PDF ou DOCX", "Free initial analysis · No signup required"],
+  ["Prefere colar o texto do currículo? Vá ao formulário →", "Prefer to paste your resume text? Go to the form →"],
+  ["Análise grátis em 2 passos", "Free analysis in 2 steps"],
+  ["1. Seu currículo", "1. Your resume"],
+  ["Enviar PDF ou DOCX", "Upload PDF or DOCX"],
+  ["clique para escolher o arquivo", "click to choose the file"],
+  ["Remover", "Remove"],
+  ["✓ Análise inicial grátis", "✓ Free initial analysis"],
+  ["✓ Resultado em ~1 minuto", "✓ No account required"],
+  ["✓ PDF ou DOCX · o arquivo não sai do seu navegador", "✓ PDF and DOCX supported · your file never leaves your browser"],
+  ["🔒 Apenas o texto extraído é enviado para gerar a análise — nada é armazenado em definitivo.", "🔒 Your resume is used only to perform this analysis."],
+  ["Prefere colar o texto do currículo?", "Prefer to paste your resume text?"],
+  ["Cole aqui o texto do seu currículo...", "Paste your resume text here..."],
+  ["2. Descrição da vaga", "2. Job description"],
+  ["Cole aqui a descrição da vaga (ex.: 'Desenvolvedor Front-end — React, TypeScript, experiência com APIs…')", "Paste the job description here"],
+  ["Analisar compatibilidade →", "Analyze compatibility"],
+  ["Compatibilidade com a vaga", "Match with this job"],
+  ["O que seu currículo demonstra bem", "What your resume demonstrates well"],
+  ["Na análise completa você recebe", "Unlock your full analysis"],
+  ["✓ evidência de cada requisito", "✓ Missing skills and keywords"],
+  ["✓ recomendações específicas", "✓ Resume weaknesses"],
+  ["✓ sugestões de reescrita", "✓ Job requirement gaps"],
+  ["✓ currículo adaptado à vaga", "✓ Personalized improvements"],
+  ["✓ mensagem para recrutador", "✓ Safe rewrite suggestions"],
+  ["✓ preparação para entrevista", "✓ A message for the hiring manager"],
+  ["Ver análise completa", "See full analysis"],
+  ["Liberar minha análise (já paguei)", "Unlock my analysis (already paid)"],
+  ["R$ 9,90 · pagamento único", "$2.99 · one-time payment"],
+  ["Pague com cartão ou boleto · checkout seguro via Stripe.", "Secure checkout — cards accepted · powered by Stripe."],
+  ["Análise completa", "Full Analysis"],
+  ["Compatibilidade", "Resume Match"],
+  ["Requisitos identificados", "Job requirements identified"],
+  ["Requisito", "Requirement"],
+  ["Situação", "Status"],
+  ["Evidência", "Evidence"],
+  ["Todos os pontos de atenção", "All points of attention"],
+  ["Reescritas seguras", "Safe rewrites"],
+  ["pode copiar", "ready to copy"],
+  ["Oportunidades condicionais", "Conditional opportunities"],
+  ["se você possui a experiência", "if you have the experience"],
+  ["Currículo otimizado para a vaga", "Resume optimized for the job"],
+  ["Otimizar ≠ inventar: nada foi adicionado além do que já está no seu currículo.", "Optimize ≠ invent: nothing was added beyond what is already in your resume."],
+  ["Palavras-chave relevantes", "Relevant keywords"],
+  ["Mensagem para o recrutador", "Message for the hiring manager"],
+  ["Preparação para entrevista", "Interview preparation"],
+  ["Perguntas frequentes", "Frequently asked questions"],
+  ["A análise é realmente grátis?", "Is the initial analysis really free?"],
+  ["Sim. Você vê seu diagnóstico inicial antes de decidir se deseja desbloquear o conteúdo completo.", "Yes. You see your match score and a detailed look at one gap before deciding whether to unlock the complete report."],
+  ["Preciso criar uma conta?", "Do I need to create an account?"],
+  ["Não. Nenhum cadastro é necessário.", "No. No sign-up or email is required."],
+  ["O MatchVaga garante entrevista?", "Does MatchVaga guarantee an interview?"],
+  ["Não. O MatchVaga ajuda a identificar diferenças entre o currículo e os requisitos da vaga e sugere melhorias.", "No. MatchVaga identifies differences between your resume and the job requirements and suggests improvements — it does not promise hiring."],
+  ["O pagamento é recorrente?", "Is the payment recurring?"],
+  ["Não. É um pagamento único para aquela análise.", "No. It is a one-time payment for that analysis."],
+  ["O MatchVaga inventa experiências?", "Does MatchVaga invent experiences?"],
+  ["Não. As sugestões utilizam somente informações reais fornecidas por você.", "No. Every suggestion uses only real information from the resume you provide."],
+  ["O que acontece com meu currículo?", "What happens to my resume?"],
+  ["O texto do seu currículo é usado apenas para gerar sua análise, fica armazenado temporariamente na infraestrutura da Cloudflare e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.", "Your resume text is used only to generate your analysis, is stored temporarily on Cloudflare's infrastructure and is automatically removed after 24 hours. It is not shared with third parties."],
+  ["Aviso de privacidade:", "Privacy notice:"],
+  ["seu currículo é utilizado exclusivamente para gerar sua análise, fica armazenado temporariamente e é removido automaticamente após 24 horas. Não é compartilhado com terceiros.", "your resume is used exclusively to generate your analysis, is stored temporarily and is automatically removed after 24 hours. It is not shared with third parties."],
+  [">Privacidade<", ">Privacy<"],
+  [">Termos de uso<", ">Terms of use<"]
+];
 
 function injectUsLanding(html: string): string {
   const meta =
@@ -1679,6 +1763,15 @@ function injectUsLanding(html: string): string {
     .replace(/<meta property="og:locale"[^>]*>/, "")
     .replace(/<meta name="twitter:title"[^>]*>/, "")
     .replace(/<meta name="twitter:description"[^>]*>/, "");
+  // CORPO em inglês desde o primeiro render (spec #1/#3): substitui os textos
+  // PT estáticos do index.html pelos equivalentes en-US. O applyI18n() do
+  // cliente aplica o dicionário "us" por cima (mesmos valores) — sem flash PT.
+  for (const [pt, en] of US_BODY_TRANSLATIONS) {
+    out = out.split(pt).join(en);
+  }
+  // Seletor de idioma NÃO existe na página US (removido server-side — o
+  // mercado define o idioma; evita flash das opções PT/ES antes do JS).
+  out = out.replace(/\s*<label class="lang-sel">[\s\S]*?<\/label>/, "");
   return out.replace("<head>", "<head>\n    " + meta);
 }
 
