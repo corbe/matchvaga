@@ -15,8 +15,11 @@
   <script src="/vendor/swagger-ui/swagger-ui-standalone-preset.js"></script>
   <script>
     window.onload = function () {
+      // A mesma página serve em duas origens: swagger.kubezen.com (spec em
+      // /openapi.yaml) e /docs no host da aplicação (spec em /docs/openapi.yaml).
+      var specUrl = window.location.pathname.startsWith("/docs") ? "/docs/openapi.yaml" : "/openapi.yaml";
       window.ui = SwaggerUIBundle({
-        url: "/docs/openapi.yaml",
+        url: specUrl,
         dom_id: "#swagger-ui",
         deepLinking: true,
         displayOperationId: false,
