@@ -1675,19 +1675,19 @@ const US_CANONICAL = "https://matchvaga.kubezen.com/us";
 // optimized_cv) fica no KV por 24h (RESULT_TTL) e é removido automaticamente.
 // Nenhum texto de privacidade pode afirmar mais do que isso.
 const US_BODY_TRANSLATIONS: [string, string][] = [
-  ["Descubra em 1 minuto se seu currículo está alinhado com a vaga.", "Is your resume showing why you're a good match for this job?"],
-  ["Envie seu currículo, cole a descrição da vaga e veja na hora: o quanto você é compatível, o que já atende e o que pode melhorar antes de se candidatar.", "Compare your resume with the job requirements and see what's clearly demonstrated — and what may be underrepresented."],
+  ["Vai enviar seu currículo para uma vaga?", "Is your resume showing why you're a good match for this job?"],
+  ["Veja antes o que a vaga pede e seu currículo não está deixando claro.", "Compare your resume with the job requirements and see what's clearly demonstrated — and what may be underrepresented."],
   ["Analisar meu currículo grátis", "Analyze my resume"],
-  ["Sem cadastro · Resultado em ~1 minuto · PDF ou DOCX", "Free initial analysis · No signup required"],
+  ["Envie seu currículo + cole a vaga · Sem cadastro", "Free initial analysis · No signup required"],
   ["Prefere colar o texto do currículo? Vá ao formulário →", "Prefer to paste your resume text? Go to the form →"],
   ["Análise grátis em 2 passos", "Free analysis in 2 steps"],
   ["1. Seu currículo", "1. Your resume"],
   ["Enviar PDF ou DOCX", "Upload PDF or DOCX"],
   ["clique para escolher o arquivo", "click to choose the file"],
   ["Remover", "Remove"],
-  ["✓ Resultado em ~1 minuto", "✓ No account required"],
-  ["✓ PDF ou DOCX · o arquivo não sai do seu navegador", "✓ PDF and DOCX supported · your file is read locally — only the extracted text is sent"],
-  ["🔒 Apenas o texto extraído é enviado para gerar a análise — nada é armazenado em definitivo.", "🔒 Your resume is used only to perform this analysis."],
+  ["✓ Sem cadastro", "✓ No account required"],
+  ["✓ PDF ou DOCX · lido no seu navegador, o arquivo não é enviado", "✓ PDF and DOCX supported · your file is read locally — only the extracted text is sent"],
+  ["🔒 Seu arquivo é lido no navegador — apenas o texto extraído é enviado para a análise e removido automaticamente em até 24 horas.", "🔒 Your resume is used only to perform this analysis."],
   ["Prefere colar o texto do currículo?", "Prefer to paste your resume text?"],
   ["Cole aqui o texto do seu currículo...", "Paste your resume text here..."],
   ["2. Descrição da vaga", "2. Job description"],
@@ -1785,6 +1785,10 @@ function injectUsLanding(html: string): string {
   // No signup required"). A versão BR mantém os elementos (tradução PT).
   out = out.replace(/\s*<p class="hero-badge"[^>]*>[\s\S]*?<\/p>/, "");
   out = out.replace(/\s*<li data-i18n="form\.trust1">[\s\S]*?<\/li>/, "");
+  // Prévia ilustrativa do resultado: é parte do teste da PRIMEIRA DOBRA do
+  // mercado BR (anúncio Meta → landing). O mercado US (experimento Reddit)
+  // NÃO recebe a prévia — baseline do experimento permanece intacto.
+  out = out.replace(/\s*<!-- Prévia do resultado[\s\S]*?<p class="preview-example"[^>]*>[\s\S]*?<\/p>\s*<\/div>/, "");
   return out.replace("<head>", "<head>\n    " + meta);
 }
 

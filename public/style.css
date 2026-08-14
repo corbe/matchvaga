@@ -22,6 +22,19 @@ body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Robo
 .hero-paste{margin-top:10px;font-size:14px}
 .hero-paste a{color:var(--muted);font-weight:700}
 .hero-paste a:hover{color:var(--ink)}
+/* Prévia do resultado (hero — ilustrativa; o score real só aparece pós-análise) */
+.hero-preview{max-width:430px;margin:22px auto 0;text-align:left}
+.preview-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:0 6px 20px rgba(17,24,39,.05)}
+.preview-score{display:flex;align-items:baseline;gap:6px;margin-bottom:10px}
+.preview-num{font-size:44px;font-weight:950;letter-spacing:-.03em;line-height:1;color:var(--green)}
+.preview-pct{font-size:24px;font-weight:800;color:var(--green)}
+.preview-label{font-size:14px;font-weight:700;color:var(--muted)}
+.preview-items{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:6px}
+.preview-items li{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--ink)}
+.preview-items .ok{color:var(--green);font-weight:900}
+.preview-items .warn{color:var(--yellow);font-weight:900}
+.preview-note{margin:0;font-size:13px;color:var(--muted);font-weight:700}
+.preview-example{margin:8px 0 0;font-size:11px;color:var(--faint);text-align:center}
 
 /* ── Painéis ── */
 .panel{background:var(--card);border-radius:20px;padding:24px 20px;box-shadow:0 10px 34px rgba(16,24,40,.06);margin-top:20px}

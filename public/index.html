@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title data-i18n="hero.title">MatchVaga — Compare seu currículo com a vaga</title>
-  <meta name="description" content="Descubra como seu currículo se compara aos requisitos da vaga e veja o que pode melhorar antes de se candidatar.">
+  <title data-i18n="hero.title">MatchVaga — Veja o que a vaga pede e seu currículo não está deixando claro</title>
+  <meta name="description" content="Vai enviar seu currículo para uma vaga? Veja antes o que a vaga pede e seu currículo não está deixando claro. Envie seu currículo + cole a vaga · sem cadastro.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://matchvaga.kubezen.com/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='42' font-size='30' font-weight='bold' text-anchor='middle' fill='%23fff' font-family='Arial'%3EMV%3C/text%3E%3C/svg%3E">
   <!-- Open Graph (WhatsApp, Facebook, LinkedIn) -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="MatchVaga">
-  <meta property="og:title" content="MatchVaga — Compare seu currículo com a vaga">
-  <meta property="og:description" content="Descubra como seu currículo se compara aos requisitos da vaga e veja o que pode melhorar antes de se candidatar.">
+  <meta property="og:title" content="MatchVaga — Veja o que a vaga pede e seu currículo não está deixando claro">
+  <meta property="og:description" content="Vai enviar seu currículo para uma vaga? Veja antes o que a vaga pede e seu currículo não está deixando claro. Envie seu currículo + cole a vaga · sem cadastro.">
   <meta property="og:url" content="https://matchvaga.kubezen.com/">
   <meta property="og:image" content="https://matchvaga.kubezen.com/og.png">
   <meta property="og:image:width" content="1200">
@@ -20,8 +20,8 @@
   <meta property="og:locale" content="pt_BR">
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="MatchVaga — Compare seu currículo com a vaga">
-  <meta name="twitter:description" content="Descubra como seu currículo se compara aos requisitos da vaga e veja o que pode melhorar antes de se candidatar.">
+  <meta name="twitter:title" content="MatchVaga — Veja o que a vaga pede e seu currículo não está deixando claro">
+  <meta name="twitter:description" content="Vai enviar seu currículo para uma vaga? Veja antes o que a vaga pede e seu currículo não está deixando claro. Envie seu currículo + cole a vaga · sem cadastro.">
   <meta name="twitter:image" content="https://matchvaga.kubezen.com/og.png">
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -43,10 +43,23 @@
         </label>
       </div>
       <p class="hero-badge" data-i18n="hero.badge">✓ Análise grátis</p>
-      <h1 data-i18n="hero.title">Descubra em 1 minuto se seu currículo está alinhado com a vaga.</h1>
-      <p class="sub" data-i18n="hero.sub">Envie seu currículo, cole a descrição da vaga e veja na hora: o quanto você é compatível, o que já atende e o que pode melhorar antes de se candidatar.</p>
+      <h1 data-i18n="hero.title">Vai enviar seu currículo para uma vaga?</h1>
+      <p class="sub" data-i18n="hero.sub">Veja antes o que a vaga pede e seu currículo não está deixando claro.</p>
       <button type="button" id="heroCta" class="cta cta-hero" data-i18n="hero.cta">Analisar meu currículo grátis</button>
-      <p class="hero-note" data-i18n="hero.note">Sem cadastro · Resultado em ~1 minuto · PDF ou DOCX</p>
+      <p class="hero-note" data-i18n="hero.note">Envie seu currículo + cole a vaga · Sem cadastro</p>
+      <!-- Prévia do resultado (ilustrativa — o score real só aparece após a análise) -->
+      <div class="hero-preview" aria-hidden="true">
+        <div class="preview-card">
+          <div class="preview-score"><span class="preview-num">85</span><span class="preview-pct">%</span><span class="preview-label" data-i18n="preview.scoreLabel">Compatibilidade com a vaga</span></div>
+          <ul class="preview-items">
+            <li><span class="ok">✓</span><span data-i18n="preview.item1">Python — bem demonstrado</span></li>
+            <li><span class="ok">✓</span><span data-i18n="preview.item2">AWS — bem demonstrado</span></li>
+            <li><span class="warn">⚠</span><span data-i18n="preview.item3">TDD/BDD — pouco evidenciado</span></li>
+          </ul>
+          <p class="preview-note" data-i18n="preview.note">Veja o que sua vaga encontra no seu currículo.</p>
+        </div>
+        <p class="preview-example" data-i18n="preview.example">Exemplo ilustrativo</p>
+      </div>
       <p class="hero-paste"><a href="#form" data-i18n="hero.pasteLink">Prefere colar o texto do currículo? Vá ao formulário →</a></p>
     </header>
 
@@ -68,10 +81,10 @@
       <p id="fileInfo" class="file-info hidden"><span id="fileName"></span><button type="button" id="removeFile" data-i18n="form.remove">Remover</button></p>
       <ul class="trust">
         <li data-i18n="form.trust1">✓ Análise inicial grátis</li>
-        <li data-i18n="form.trust2">✓ Resultado em ~1 minuto</li>
-        <li data-i18n="form.trust3">✓ PDF ou DOCX · o arquivo não sai do seu navegador</li>
+        <li data-i18n="form.trust2">✓ Sem cadastro</li>
+        <li data-i18n="form.trust3">✓ PDF ou DOCX · lido no seu navegador, o arquivo não é enviado</li>
       </ul>
-      <p class="privacy" data-i18n="form.privacy">🔒 Apenas o texto extraído é enviado para gerar a análise — nada é armazenado em definitivo.</p>
+      <p class="privacy" data-i18n="form.privacy">🔒 Seu arquivo é lido no navegador — apenas o texto extraído é enviado para a análise e removido automaticamente em até 24 horas.</p>
 
       <details class="paste-toggle">
         <summary data-i18n="form.pasteToggle">Prefere colar o texto do currículo?</summary>
